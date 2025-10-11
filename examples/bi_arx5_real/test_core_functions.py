@@ -10,12 +10,12 @@ import os
 
 import numpy as np
 
-# 添加 openpi 项目根目录到路径
-sys.path.insert(0, "/home/ubuntu/openpi")
-# 添加 lerobot-ARX5 路径
-sys.path.insert(0, "/home/ubuntu/lerobot-ARX5/src")
+# # 添加 openpi 项目根目录到路径
+# sys.path.insert(0, "../..")
+# # 添加 lerobot-ARX5 路径
+# sys.path.insert(0, "../../../lerobot-ARX5/src")
 
-from examples.bi_arx5_real.env import BiARX5RealEnvironment
+from env import BiARX5RealEnvironment
 
 # 设置日志
 logging.basicConfig(
@@ -110,8 +110,8 @@ def test_core_functions():
 
         # 限制夹爪范围 [0.002, 0.08]
         # 左夹爪在索引 6，右夹爪在索引 13
-        test_action[6] = np.clip(test_action[6], 0.002, 0.08)  # 左夹爪
-        test_action[13] = np.clip(test_action[13], 0.002, 0.08)  # 右夹爪
+        test_action[6] = np.clip(test_action[6], 0.002, 0.4)  # 左夹爪
+        test_action[13] = np.clip(test_action[13], 0.002, 0.4)  # 右夹爪
 
         print(f"测试动作:")
         print(f"  - 动作维度: {test_action.shape}")
@@ -187,8 +187,8 @@ def test_core_functions():
 
                     # 限制夹爪范围 [0.002, 0.08]
                     # 左夹爪在索引 6，右夹爪在索引 13
-                    action[6] = np.clip(action[6], 0.002, 0.08)  # 左夹爪
-                    action[13] = np.clip(action[13], 0.002, 0.08)  # 右夹爪
+                    action[6] = np.clip(action[6], 0.002, 0.4)  # 左夹爪
+                    action[13] = np.clip(action[13], 0.002, 0.4)  # 右夹爪
 
                     # 执行动作
                     env.apply_action({"actions": action})

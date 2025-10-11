@@ -30,7 +30,7 @@ sudo ./set_can.sh
 
 ```bash
 cd /home/ubuntu/openpi
-uv run scripts/serve_policy.py --env BI_ARX5 --default_prompt='pick and place cube'
+python scripts/serve_policy.py --env BI_ARX5 --default_prompt='pick and place cube'
 ```
 
 ### Terminal 2: Run BiARX5 Robot Client

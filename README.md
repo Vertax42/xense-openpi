@@ -324,10 +324,13 @@ We will collect common issues and their solutions here. If you encounter an issu
 
 ### Training on BiARX5
 
-
-```bash local datasetsmode
+```bash 
+# local datasetsmode
 export HF_HUB_OFFLINE=1 && export HF_DATASETS_OFFLINE=1 && echo "Offline mode enabled"
 export HF_DATASETS_CACHE=/home/ubuntu/.cache/huggingface/datasets && echo "HF_DATASETS_CACHE set to: $HF_DATASETS_CACHE"
 
 python scripts/compute_norm_stats.py --config-name pi05_base_arx5_lora
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_arx5_lora --exp-name=bi_arx5_pick_and_place_cube --overwrite / --resume
+
+```bash
+python scripts/serve_policy.py policy:checkpoint --policy.config=pi05_base_arx5_lora --policy.dir=checkpoints/pi05_base_arx5_lora/bi_arx5_pick_and_place_cube/19999
