@@ -334,3 +334,8 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_arx5_lora -
 
 ```bash
 python scripts/serve_policy.py policy:checkpoint --policy.config=pi05_base_arx5_lora --policy.dir=checkpoints/pi05_base_arx5_lora/bi_arx5_pick_and_place_cube/19999
+192.168.1.165:8000
+vertax@Jarvis:~$ nc -zv 192.168.1.165 8000
+Connection to 192.168.1.165 8000 port [tcp/*] succeeded!
+python -m examples.bi_arx5_real.main     --args.host 192.168.1.165     --args.port 8000     --args.dry_run 
+

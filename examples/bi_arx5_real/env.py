@@ -1,4 +1,3 @@
-from re import X
 from typing import List, Optional
 import logging
 
@@ -8,7 +7,7 @@ from openpi_client.runtime import environment as _environment
 from typing_extensions import override
 import numpy as np
 
-import real_env as _real_env
+import examples.bi_arx5_real.real_env as _real_env
 
 logger = logging.getLogger(__name__)
 

@@ -12,12 +12,12 @@ from openpi_client.runtime.agents import policy_agent as _policy_agent
 from openpi_client.runtime import environment as _environment
 from typing_extensions import override
 
-# 添加 openpi 项目根目录到路径
-sys.path.insert(0, "/home/ubuntu/openpi")
-# 添加 lerobot-ARX5 路径
-sys.path.insert(0, "/home/ubuntu/lerobot-ARX5/src")
+# # 添加 openpi 项目根目录到路径
+# sys.path.insert(0, "/home/ubuntu/openpi")
+# # 添加 lerobot-ARX5 路径
+# sys.path.insert(0, "/home/ubuntu/lerobot-ARX5/src")
 
-from examples.bi_arx5_real import env as _env
+import examples.bi_arx5_real.env as _env
 
 
 class DryRunEnvironmentWrapper(_environment.Environment):
