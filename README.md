@@ -338,7 +338,7 @@ export NCCL_NET_GDR_LEVEL=0
 export NCCL_TOPO_FILE=/dev/null
 export CUDA_VISIBLE_DEVICES=0,1
 
-torchrun --standalone --nnodes=1 --nproc_per_node=2 scripts/train_pytorch.py pi05_base_arx5_full --exp-name=xense_bi_arx5_pick_and_place_cube_full --resume
+torchrun --standalone --nnodes=1 --nproc_per_node=2 scripts/train_pytorch.py pi05_base_arx5_full --exp-name=xense_bi_arx5_pick_and_place_cube_full --resume ; shutdown -h +5
 
 python scripts/compute_norm_stats.py --config-name pi05_base_arx5_full
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train_pytorch.py pi05_base_arx5_full --exp-name=xense_bi_arx5_pick_and_place_cube_full --overwrite / --resume
