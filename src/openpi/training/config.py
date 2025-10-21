@@ -964,12 +964,12 @@ _CONFIGS = [
             paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
         ).get_freeze_filter(),
         batch_size=64,  # the total batch_size not pre_gpu batch_size
-        # weight_loader=weight_loaders.CheckpointWeightLoader(
-        #     "/home/ubuntu/openpi/checkpoints/pi05_base_arx5_lora/bi_arx5_pick_and_place_cube/19999/params"
-        # ),
         weight_loader=weight_loaders.CheckpointWeightLoader(
-            "s3://openpi-assets/checkpoints/pi05_base/params"
+            "/home/ubuntu/openpi/checkpoints/pi05_base_arx5_tie_shoes_lora/tie_shoes_lora_50_episodes/33000/params"
         ),
+        # weight_loader=weight_loaders.CheckpointWeightLoader(
+        #     "s3://openpi-assets/checkpoints/pi05_base/params"
+        # ),
         num_train_steps=60_000,  # 20000
         num_workers=2,  # default 2
         fsdp_devices=1,  # refer line 359
