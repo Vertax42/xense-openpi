@@ -17,6 +17,7 @@ import openpi.models.model as _model
 import openpi.models.pi0_config as pi0_config
 import openpi.models.pi0_tactile_config as pi0_tactile_config
 import openpi.models.pi0_fast as pi0_fast
+import openpi.models.pi0_tactile_config as pi0_tactile_config
 import openpi.models.tokenizer as _tokenizer
 import openpi.policies.aloha_policy as aloha_policy
 import openpi.policies.aloha_tactile_policy as aloha_tactile_policy
@@ -1187,6 +1188,38 @@ _CONFIGS = [
         num_train_steps=20_000,
         num_workers=2,  # default 2
         fsdp_devices=1,  # refer line 359
+    ),
+    TrainConfig(
+        name="pi05_base_arx5_tactile_lora",
+        model=pi0_tactile_config.Pi0TactileConfig(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+            pi05=True,
+            # freeze_visual_encoder=True,  # Freeze pretrained visual encoder
+        ),
+        data=LeRobotAlohaTactileDataConfig(
+            repo_id="Vertax/bi_arx5_pick_and_place_cube",
+            # assets=AssetsConfig(
+            #     assets_dir="gs://openpi-assets/checkpoints/pi05_base/assets",
+            #     asset_id="trossen",
+            # ),
+            adapt_to_pi=False,
+            base_config=DataConfig(
+                prompt_from_task=True,
+            ),
+        ),
+        freeze_filter=pi0_tactile_config.Pi0TactileConfig(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+            # freeze_visual_encoder=True,
+        ).get_freeze_filter(),
+        batch_size=64,  # Reduced batch size due to more images (5 vs 3)
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "gs://openpi-assets/checkpoints/pi05_base/params"
+        ),
+        num_train_steps=40_000,
+        num_workers=2,
+        fsdp_devices=1,
     ),
     TrainConfig(
         name="pi05_aloha_pen_uncap",
