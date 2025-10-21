@@ -343,8 +343,19 @@ torchrun --standalone --nnodes=1 --nproc_per_node=2 scripts/train_pytorch.py pi0
 python scripts/compute_norm_stats.py --config-name pi05_base_arx5_full
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train_pytorch.py pi05_base_arx5_full --exp-name=xense_bi_arx5_pick_and_place_cube --overwrite / --resume
 
+# 20251021_XenseRobotics_TieShoes
+python scripts/compute_norm_stats.py --config-name pi05_base_arx5_tie_shoes_lora
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_arx5_tie_shoes_lora --exp-name=tie_shoes_full --overwrite / --resume
+
+# 20251021_AutoDL_TieShoes
+python scripts/compute_norm_stats.py --config-name pi05_base_arx5_tie_shoes_full
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_arx5_tie_shoes_full --exp-name=tie_shoes_lora_100_episodes --overwrite / --resume
 ```bash
+# pick and place 
 python scripts/serve_policy.py --default-prompt="pick rgb cubes and place them into the blue box" policy:checkpoint --policy.config=pi05_base_arx5_lora --policy.dir=checkpoints/pi05_base_arx5_lora/xense_bi_arx5_pick_and_place_cube_arx5_assets/33000
+
+# tie shoes
+python scripts/serve_policy.py --default-prompt="tie shoes" policy:checkpoint --policy.config=pi05_base_arx5_tie_shoes_lora --policy.dir=checkpoints/pi05_base_arx5_tie_shoes_lora/tie_shoes_lora_50_episodes/33000
 
 python scripts/serve_policy.py policy:checkpoint --policy.config=pi05_base_arx5_full --policy.dir=checkpoints/pi05_base_arx5_full/xense_bi_arx5_pick_and_place_cube_full/20000
 
