@@ -15,7 +15,6 @@ import tyro
 
 import openpi.models.model as _model
 import openpi.models.pi0_config as pi0_config
-import openpi.models.pi0_tactile_config as pi0_tactile_config
 import openpi.models.pi0_fast as pi0_fast
 import openpi.models.pi0_tactile_config as pi0_tactile_config
 import openpi.models.tokenizer as _tokenizer
