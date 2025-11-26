@@ -77,6 +77,17 @@ class ActionQueue:
         """
         return self.last_index
 
+    def clear(self) -> None:
+        """Clear the queue, removing all actions.
+
+        This resets the queue to its initial empty state while preserving
+        the rtc_enabled setting.
+        """
+        with self.lock:
+            self.queue = None
+            self.original_queue = None
+            self.last_index = 0
+
     def get_left_over(self) -> Optional[np.ndarray]:
         """Get leftover original actions for RTC prev_chunk_left_over.
 

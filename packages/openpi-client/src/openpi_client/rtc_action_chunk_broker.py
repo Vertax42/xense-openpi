@@ -4,7 +4,7 @@ import threading
 import time
 from typing import Dict, Optional
 
-import numpy as np
+import numpy as np  # noqa: F401
 from typing_extensions import override
 
 from openpi_client import base_policy as _base_policy
@@ -52,6 +52,9 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
         self._latest_obs_lock = threading.Lock()
 
         self._stop_event = threading.Event()
+        self._first_inference_done = (
+            threading.Event()
+        )  # Signal when first actions are ready
         self._thread = threading.Thread(target=self._get_actions_loop, daemon=True)
         self._thread_started = False
 
@@ -127,6 +130,13 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
                         real_delay=inference_delay_steps,
                         action_index_before_inference=action_index_before_inference,
                     )
+
+                    # Signal that first inference is done (queue now has actions)
+                    if not self._first_inference_done.is_set():
+                        logger.info(
+                            "First inference completed, action queue initialized"
+                        )
+                        self._first_inference_done.set()
                 else:
                     # Sleep to prevent busy waiting
                     time.sleep(0.005)
@@ -143,25 +153,31 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
         with self._latest_obs_lock:
             self._latest_obs = obs
 
+        # Wait for first inference to complete (handles JIT compilation delay)
+        if not self._first_inference_done.is_set():
+            logger.info("Waiting for first inference to complete (JIT compilation)...")
+            # Wait up to 120 seconds for first inference (JIT can be slow)
+            if not self._first_inference_done.wait(timeout=120.0):
+                raise RuntimeError(
+                    "RTCActionChunkBroker: Timeout waiting for first inference. "
+                    "Check if the policy server is running and responsive."
+                )
+            logger.info("First inference done, proceeding with action queue")
+
         # Get action from queue
         action = self._action_queue.get()
 
         if action is None:
-            # If queue is empty, we might need to block or return None
-            # For safety, we block briefly and try again, or trigger immediate inference?
-            # But since we are in the main loop, blocking is bad.
-            # However, returning None might crash the agent if it expects an action.
-            # Let's try to wait a bit.
+            # Queue empty after first inference - this shouldn't happen often
+            # Wait briefly and retry
             logger.warning("Action queue empty! Waiting...")
             start_wait = time.time()
-            while action is None and (time.time() - start_wait) < 1.0:
-                time.sleep(0.002)
+            while action is None and (time.time() - start_wait) < 2.0:
+                time.sleep(0.005)
                 action = self._action_queue.get()
 
             if action is None:
                 logger.error("Action queue empty after waiting!")
-                # Return a dummy action or raise error?
-                # Raising error is safer than undefined behavior.
                 raise RuntimeError("RTCActionChunkBroker: Action queue is empty.")
 
         # Return in the format expected by the agent (dict)
@@ -172,11 +188,9 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
     @override
     def reset(self) -> None:
         self._policy.reset()
-        # We should probably clear the queue on reset
-        # But ActionQueue doesn't have a clear method, we can just re-init it or consume it.
-        # For now, we leave it as is, or maybe we should implement clear() in ActionQueue.
-        # Re-initializing is safer.
-        self._action_queue = ActionQueue(rtc_enabled=self._action_queue.rtc_enabled)
+        # Clear the action queue for next episode
+        self._action_queue.clear()
+        self._first_inference_done.clear()  # Reset for next episode
         with self._latest_obs_lock:
             self._latest_obs = None
 
