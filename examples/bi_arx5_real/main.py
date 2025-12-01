@@ -141,7 +141,7 @@ class Args:
     execution_horizon: int = 30  # execution_horizon for rtc_action_chunk_broker
     # Number of steps to blend between old and new actions at merge point
     # 0 = no blending (hard switch), 2-3 = smooth transition
-    blend_steps: int = 2
+    blend_steps: int = 3
 
 
 def main(args: Args) -> None:
