@@ -19,6 +19,17 @@ logger = logging.getLogger(__name__)
 # 默认重置位置 (关节角度 + 夹爪位置) - 与你的 lerobot 配置保持一致
 DEFAULT_RESET_POSITION = [0.0, 0.948, 0.858, -0.573, 0.0, 0.0, 0.002]
 
+# 安全限位 (底层限位的 0.9 倍作为检测阈值)
+_JOINT_POS_MIN_RAW = np.array([-3.14, -0.05, -0.2, -1.6, -1.57, -2.0])
+_JOINT_POS_MAX_RAW = np.array([2.618, 3.5, 3.2, 1.55, 1.57, 2.0])
+_SAFETY_FACTOR = 0.9
+
+# 计算安全限位 (使用 0.9 倍的范围)
+JOINT_POS_MIN = _JOINT_POS_MIN_RAW * _SAFETY_FACTOR
+JOINT_POS_MAX = _JOINT_POS_MAX_RAW * _SAFETY_FACTOR
+GRIPPER_MIN = -0.1
+GRIPPER_MAX = 1.8
+
 
 class BiARX5RealEnv:
     """
@@ -149,8 +160,49 @@ class BiARX5RealEnv:
             observation=self.get_observation(),
         )
 
+    def _check_action_safety(self, action: np.ndarray) -> tuple[bool, str]:
+        """检查动作是否在安全范围内
+        
+        Args:
+            action: 14维动作数组 [left_joints(6), left_gripper(1), right_joints(6), right_gripper(1)]
+            
+        Returns:
+            (is_safe, error_message): 是否安全，以及错误信息
+        """
+        action = np.asarray(action)
+        
+        # 检查左臂关节 (index 0-5)
+        left_joints = action[0:6]
+        for i, (val, min_val, max_val) in enumerate(zip(left_joints, JOINT_POS_MIN, JOINT_POS_MAX)):
+            if val < min_val or val > max_val:
+                return False, f"Left joint {i+1} out of range: {val:.4f} not in [{min_val:.4f}, {max_val:.4f}]"
+        
+        # 检查左夹爪 (index 6)
+        left_gripper = action[6]
+        if left_gripper < GRIPPER_MIN or left_gripper > GRIPPER_MAX:
+            return False, f"Left gripper out of range: {left_gripper:.4f} not in [{GRIPPER_MIN}, {GRIPPER_MAX}]"
+        
+        # 检查右臂关节 (index 7-12)
+        right_joints = action[7:13]
+        for i, (val, min_val, max_val) in enumerate(zip(right_joints, JOINT_POS_MIN, JOINT_POS_MAX)):
+            if val < min_val or val > max_val:
+                return False, f"Right joint {i+1} out of range: {val:.4f} not in [{min_val:.4f}, {max_val:.4f}]"
+        
+        # 检查右夹爪 (index 13)
+        right_gripper = action[13]
+        if right_gripper < GRIPPER_MIN or right_gripper > GRIPPER_MAX:
+            return False, f"Right gripper out of range: {right_gripper:.4f} not in [{GRIPPER_MIN}, {GRIPPER_MAX}]"
+        
+        return True, ""
+
     def step(self, action):
         """执行动作 - 转换格式后调用你的 send_action()"""
+        # 安全检查
+        is_safe, error_msg = self._check_action_safety(action)
+        if not is_safe:
+            logger.error(f"Action safety check failed: {error_msg}")
+            raise ValueError(f"Unsafe action detected: {error_msg}")
+        
         # 确保机器人处于正常位置控制模式（而不是重力补偿模式）
         if self.robot.is_gravity_compensation_mode():
             logger.info(
@@ -177,6 +229,7 @@ class BiARX5RealEnv:
             action_dict["left_gripper.pos"] = 0.4
         if action_dict["right_gripper.pos"] < 0.45 and action_dict["right_gripper.pos"] > 0.35:
             action_dict["right_gripper.pos"] = 0.4
+        
         # print(
         #     "gripper_action",
         #     action_dict["left_gripper.pos"],
