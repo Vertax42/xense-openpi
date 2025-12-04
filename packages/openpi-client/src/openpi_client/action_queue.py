@@ -217,7 +217,7 @@ class ActionQueue:
         ):
             # Get remaining old actions
             old_remaining = self.queue[self.last_index :]
-            logger.info("old_remaining steps: ", len(old_remaining))
+            logger.debug(f"old_remaining steps: {len(old_remaining)}")
             blend_len = min(self.blend_steps, len(old_remaining), len(new_processed))
 
             if blend_len > 0:
