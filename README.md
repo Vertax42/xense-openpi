@@ -377,6 +377,8 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_arx5_tie_sh
 python scripts/compute_norm_stats.py pi05_base_full_test
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_full_test --exp-name=pi05_base_full_test --overwrite / --resume
 
+# 20251204 pick and place chips train
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_arx5_lora_pick_and_place_chips --exp-name=pi05_base_arx5_lora_pick_and_place_chips_20251204 --overwrite
 
 ## inference time commands
 copy checkpoints from autodl server to local server
