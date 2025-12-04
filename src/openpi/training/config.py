@@ -1352,14 +1352,14 @@ _CONFIGS = [
         fsdp_devices=1,  # refer line 359
     ),
     TrainConfig(
-        name="pi05_base_tactile_test",
+        name="pi05_base_arx5_lora_pick_and_place_chips",
         model=pi0_config.Pi0Config(
             paligemma_variant="gemma_2b_lora",
             action_expert_variant="gemma_300m_lora",
             pi05=True,
         ),
-        data=LeRobotAlohaTactileDataConfig(
-            repo_id="Vertax/lerobot040_test_bi_arx5",  # your datasets repo_id
+        data=LeRobotAlohaDataConfig(
+            repo_id="Vertax/bi_arx5_pick_and_place_chips",  # your datasets repo_id
             repack_transforms=_transforms.Group(
                 inputs=[
                     _transforms.RepackTransform(
@@ -1385,7 +1385,7 @@ _CONFIGS = [
             paligemma_variant="gemma_2b_lora",
             action_expert_variant="gemma_300m_lora",
         ).get_freeze_filter(),
-        batch_size=8,  # the total batch_size not pre_gpu batch_size
+        batch_size=64,  # the total batch_size not pre_gpu batch_size
         weight_loader=weight_loaders.CheckpointWeightLoader(
             "gs://openpi-assets/checkpoints/pi05_base/params"
         ),
