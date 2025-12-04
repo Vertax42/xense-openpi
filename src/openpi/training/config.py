@@ -938,7 +938,7 @@ _CONFIGS = [
             rtc_config=_rtc_config.RTCConfig(
                 enabled=True,
                 execution_horizon=30,
-                max_guidance_weight=1.0,
+                max_guidance_weight=10.0,  # Increased for stronger RTC guidance
                 prefix_attention_schedule=_rtc_config.RTCAttentionSchedule.EXP,
             ),
         ),
@@ -1227,7 +1227,7 @@ _CONFIGS = [
             rtc_config=_rtc_config.RTCConfig(
                 enabled=True,
                 execution_horizon=30,
-                max_guidance_weight=1.0,
+                max_guidance_weight=10.0,  # Increased for stronger RTC guidance
                 prefix_attention_schedule=_rtc_config.RTCAttentionSchedule.EXP,
             ),
         ),
