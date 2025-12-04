@@ -76,36 +76,36 @@ class DryRunEnvironmentWrapper(_environment.Environment):
             # logging.info(f"action range: [{actions.min():.6f}, {actions.max():.6f}]")
 
             # print each joint action value
-            # joint_names = [
-            #     "left_joint_1",
-            #     "left_joint_2",
-            #     "left_joint_3",
-            #     "left_joint_4",
-            #     "left_joint_5",
-            #     "left_joint_6",
-            #     "left_gripper",
-            #     "right_joint_1",
-            #     "right_joint_2",
-            #     "right_joint_3",
-            #     "right_joint_4",
-            #     "right_joint_5",
-            #     "right_joint_6",
-            #     "right_gripper",
-            # ]
+            joint_names = [
+                "left_joint_1",
+                "left_joint_2",
+                "left_joint_3",
+                "left_joint_4",
+                "left_joint_5",
+                "left_joint_6",
+                "left_gripper",
+                "right_joint_1",
+                "right_joint_2",
+                "right_joint_3",
+                "right_joint_4",
+                "right_joint_5",
+                "right_joint_6",
+                "right_gripper",
+            ]
 
-            # logging.info("\ndetailed action values:")
-            # for i, (name, value) in enumerate(zip(joint_names, actions)):
-            #     logging.info(f"  [{i:2d}] {name:12s}: {value:+.6f} rad")
+            logging.info("\ndetailed action values:")
+            for i, (name, value) in enumerate(zip(joint_names, actions)):
+                logging.info(f"  [{i:2d}] {name:12s}: {value:+.6f} rad")
 
-            # logging.info("\ngripper action:")
-            # logging.info(f"  left gripper (index 6):  {actions[6]:.6f}")
-            # logging.info(f"  right gripper (index 13): {actions[13]:.6f}")
+            logging.info("\ngripper action:")
+            logging.info(f"  left gripper (index 6):  {actions[6]:.6f}")
+            logging.info(f"  right gripper (index 13): {actions[13]:.6f}")
 
-            # logging.info(f"{'─'*80}")
-            # logging.info(
-            #     "⚠️  dry run mode: action intercepted, not actually executed to robot"
-            # )
-            # logging.info(f"{'─'*80}\n")
+            logging.info(f"{'─'*80}")
+            logging.info(
+                "⚠️  dry run mode: action intercepted, not actually executed to robot"
+            )
+            logging.info(f"{'─'*80}\n")
 
 
 @dataclasses.dataclass
@@ -128,6 +128,7 @@ class Args:
     controller_dt: float = (
         0.002  # lower controller frequency, unit: second (0.002s = 2ms = 500Hz)
     )
+    enable_tactile_sensors: bool = False  # enable tactile sensors, default False
     preview_time: float = 0.04  # preview time = 1/runtime_hz, for smooth interpolation
     runtime_hz: int = 25  # runtime frequency, unit: Hz
     # dry run mode: only print policy output, not actually execute action
@@ -141,7 +142,7 @@ class Args:
     execution_horizon: int = 30  # execution_horizon for rtc_action_chunk_broker
     # Number of steps to blend between old and new actions at merge point
     # 0 = no blending (hard switch), 2-3 = smooth transition
-    blend_steps: int = 3
+    blend_steps: int = 5
 
 
 def main(args: Args) -> None:
@@ -159,6 +160,7 @@ def main(args: Args) -> None:
         right_arm_port=args.right_arm_port,
         log_level=args.log_level,
         use_multithreading=args.use_multithreading,
+        enable_tactile_sensors=args.enable_tactile_sensors,
         reset_position=metadata.get("reset_pose"),
         controller_dt=args.controller_dt,  # pass in lower controller frequency
         preview_time=args.preview_time,  # pass in preview time

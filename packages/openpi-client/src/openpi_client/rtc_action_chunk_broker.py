@@ -172,7 +172,7 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
                         )
                         original_actions = processed_actions
                     else:
-                        logger.info(
+                        logger.debug(
                             f"RTC: Got actions_original shape: {original_actions.shape}"
                         )
 

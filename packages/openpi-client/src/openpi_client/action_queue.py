@@ -43,6 +43,11 @@ class ActionQueue:
         """
         with self.lock:
             if self.queue is None or self.last_index >= len(self.queue):
+                logger.warning(
+                    "Action queue exhausted! No actions available. "
+                    "This may cause robot to stall. Consider increasing execution_horizon "
+                    "or reducing action_queue_size_to_get_new_actions."
+                )
                 return None
 
             action = self.queue[self.last_index]
@@ -164,36 +169,41 @@ class ActionQueue:
         """
         truncate_idx = max(0, min(truncate_delay, len(new_original_actions)))
 
-        # Debug: Check action continuity at merge point
-        if self.queue is not None and self.last_index > 0:
-            # The action we're about to execute from new queue
-            if truncate_idx < len(new_processed_actions):
-                next_action = new_processed_actions[truncate_idx]
+        # Debug: Verify RTC alignment in the delay region
+        if self.original_queue is not None and truncate_idx > 0:
+            # RTC should align: new_actions[0:delay] ≈ prev_left_over[0:delay]
+            # prev_left_over was self.original_queue[self.last_index:] at inference start
+            # So we compare new_actions[0:delay] with old_queue[last_index : last_index+delay]
+            remaining_old = len(self.original_queue) - self.last_index
+            align_len = min(truncate_idx, remaining_old, len(new_original_actions))
+            if align_len > 0:
+                # This is what was passed to model as prev_chunk_left_over
+                old_aligned = self.original_queue[self.last_index : self.last_index + align_len]
+                new_aligned = new_original_actions[:align_len]
+                diff_rtc = np.abs(new_aligned - old_aligned)
+                max_diff_rtc = np.max(diff_rtc)
+                mean_diff_rtc = np.mean(diff_rtc)
+                logger.info(
+                    f"RTC Alignment Check: new[0:{align_len}] vs old[{self.last_index}:{self.last_index + align_len}] "
+                    f"max={max_diff_rtc:.4f}, mean={mean_diff_rtc:.4f} "
+                    f"(should be small if RTC works correctly)"
+                )
 
-                # Compare with: the action at same position in OLD queue
-                # (this is what RTC guidance aligns to)
-                if self.last_index < len(self.queue):
-                    old_action_at_same_pos = self.queue[self.last_index]
-                    diff_aligned = np.abs(next_action - old_action_at_same_pos)
-                    max_diff_aligned = np.max(diff_aligned)
-                    mean_diff_aligned = np.mean(diff_aligned)
-                    max_diff_dim = np.argmax(diff_aligned)
-                    logger.info(
-                        f"RTC Merge: diff(new[{truncate_idx}] vs old[{self.last_index}]) "
-                        f"max={max_diff_aligned:.4f} (dim {max_diff_dim}), "
-                        f"mean={mean_diff_aligned:.4f}"
-                    )
-
-                # Also compare with last executed action (for reference)
-                last_executed_idx = self.last_index - 1
-                if last_executed_idx >= 0 and last_executed_idx < len(self.queue):
-                    last_action = self.queue[last_executed_idx]
-                    diff_prev = np.abs(next_action - last_action)
-                    max_diff_prev = np.max(diff_prev)
-                    logger.info(
-                        f"RTC Merge: diff(new[{truncate_idx}] vs old[{last_executed_idx}]) "
-                        f"max={max_diff_prev:.4f} (this is the actual jump)"
-                    )
+        # Debug: Check actual jump at merge point
+        if self.queue is not None and truncate_idx < len(new_processed_actions):
+            next_action = new_processed_actions[truncate_idx]
+            # Compare with last executed action (the actual jump)
+            last_executed_idx = self.last_index - 1
+            if last_executed_idx >= 0 and last_executed_idx < len(self.queue):
+                last_action = self.queue[last_executed_idx]
+                diff_jump = np.abs(next_action - last_action)
+                max_diff_jump = np.max(diff_jump)
+                mean_diff_jump = np.mean(diff_jump)
+                max_diff_dim = np.argmax(diff_jump)
+                logger.info(
+                    f"RTC Actual Jump: new[{truncate_idx}] vs old[{last_executed_idx}] "
+                    f"max={max_diff_jump:.4f} (dim {max_diff_dim}), mean={mean_diff_jump:.4f}"
+                )
 
         # Get the new actions starting from truncate_idx
         new_original = new_original_actions[truncate_idx:].copy()
@@ -207,6 +217,7 @@ class ActionQueue:
         ):
             # Get remaining old actions
             old_remaining = self.queue[self.last_index :]
+            logger.info("old_remaining steps: ", len(old_remaining))
             blend_len = min(self.blend_steps, len(old_remaining), len(new_processed))
 
             if blend_len > 0:

@@ -68,7 +68,7 @@ class Runtime:
             now = time.time()
             dt = now - last_step_time
 
-            logging.info(f"dt={dt*1000:.2f}ms")
+            # logging.info(f"dt={dt*1000:.2f}ms")
 
             if dt < step_time:
                 time.sleep(step_time - dt)

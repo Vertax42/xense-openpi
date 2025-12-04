@@ -39,6 +39,7 @@ class BiARX5RealEnv:
         right_arm_port: str = "can3",
         log_level: str = "INFO",
         use_multithreading: bool = True,
+        enable_tactile_sensors: bool = False,
         reset_position: Optional[List[float]] = None,
         setup_robot: bool = True,
         controller_dt: float = 0.002,  # 底层控制频率 (秒)
@@ -57,6 +58,7 @@ class BiARX5RealEnv:
             right_arm_port=right_arm_port,
             log_level=log_level,
             use_multithreading=use_multithreading,
+            enable_tactile_sensors=enable_tactile_sensors,
             inference_mode=True,  # 推理模式，设置合适的 preview_time
             controller_dt=controller_dt,  # 从参数传入
             preview_time=preview_time,  # 从参数传入
@@ -103,6 +105,9 @@ class BiARX5RealEnv:
             "left_wrist": "cam_left_wrist",  # 左腕相机 -> cam_left_wrist
             "right_wrist": "cam_right_wrist",  # 右腕相机 -> cam_right_wrist
         }
+        if self.config.enable_tactile_sensors:
+            camera_mapping["left_tactile_0"] = "left_tactile_0"
+            camera_mapping["right_tactile_0"] = "right_tactile_0"
 
         for lerobot_name, openpi_name in camera_mapping.items():
             if lerobot_name in obs:
@@ -119,6 +124,7 @@ class BiARX5RealEnv:
         obs["qpos"] = self.get_qpos(current_obs)
         obs["qvel"] = self.get_qvel(current_obs)
         obs["images"] = self.get_images(current_obs)
+        # print(obs["images"].keys()) # display the keys of the robot observation images
         return obs
 
     def get_reward(self):
@@ -166,11 +172,16 @@ class BiARX5RealEnv:
         for i in range(6):
             action_dict[f"right_joint_{i+1}.pos"] = float(action[7 + i])
         action_dict["right_gripper.pos"] = float(action[13])
-        print(
-            "gripper_action",
-            action_dict["left_gripper.pos"],
-            action_dict["right_gripper.pos"],
-        )
+        # for better gripper control to catch the cubes
+        if action_dict["left_gripper.pos"] < 0.48 and action_dict["left_gripper.pos"] > 0.38:
+            action_dict["left_gripper.pos"] = 0.4
+        if action_dict["right_gripper.pos"] < 0.45 and action_dict["right_gripper.pos"] > 0.35:
+            action_dict["right_gripper.pos"] = 0.4
+        # print(
+        #     "gripper_action",
+        #     action_dict["left_gripper.pos"],
+        #     action_dict["right_gripper.pos"],
+        # )
 
         # 发送动作到你的 BiARX5 机器人
         try:
@@ -207,6 +218,7 @@ def make_bi_arx5_real_env(
     log_level: str = "INFO",
     use_multithreading: bool = True,
     reset_position: Optional[List[float]] = None,
+    enable_tactile_sensors: bool = False,
     setup_robot: bool = True,
     controller_dt: float = 0.002,
     preview_time: float = 0.02,
@@ -218,6 +230,7 @@ def make_bi_arx5_real_env(
         log_level=log_level,
         use_multithreading=use_multithreading,
         reset_position=reset_position,
+        enable_tactile_sensors=enable_tactile_sensors,
         setup_robot=setup_robot,
         controller_dt=controller_dt,
         preview_time=preview_time,

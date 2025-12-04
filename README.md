@@ -396,5 +396,5 @@ python scripts/serve_policy.py policy:checkpoint --policy.config=tie_shoes_50_ep
 192.168.1.165:8000
 vertax@Jarvis:~$ nc -zv 192.168.1.165 8000
 Connection to 192.168.1.165 8000 port [tcp/*] succeeded!
-python -m examples.bi_arx5_real.main     --args.host 192.168.1.165     --args.port 8000     --args.dry_run 
+python -m examples.bi_arx5_real.main     --args.host 192.168.1.165     --args.port 8000     --args.dry_run  --args.enable_tactile_sensors
 

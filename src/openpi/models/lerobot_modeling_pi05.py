@@ -807,6 +807,14 @@ class PI05Pytorch(nn.Module):  # see openpi `PI0Pytorch`
                 prev_chunk_left_over = kwargs.get("prev_chunk_left_over")
                 execution_horizon = kwargs.get("execution_horizon")
 
+                # Log RTC params on first step only
+                if time >= 0.99:
+                    logging.debug(
+                        f"RTC guidance: inference_delay={inference_delay}, "
+                        f"prev_chunk_left_over={'None' if prev_chunk_left_over is None else prev_chunk_left_over.shape}, "
+                        f"execution_horizon={execution_horizon}"
+                    )
+
                 v_t = self.rtc_processor.denoise_step(
                     x_t=x_t,
                     prev_chunk_left_over=prev_chunk_left_over,
@@ -1092,6 +1100,11 @@ class PI05Policy(PreTrainedPolicy):
         # If RTC is not enabled - we can still track the denoising data
         if self.config.rtc_config is not None:
             self.rtc_processor = RTCProcessor(self.config.rtc_config)
+            logging.info(f"RTC Processor initialized: enabled={self.config.rtc_config.enabled}, "
+                        f"max_guidance_weight={self.config.rtc_config.max_guidance_weight}, "
+                        f"execution_horizon={self.config.rtc_config.execution_horizon}")
+        else:
+            logging.info("RTC is disabled (rtc_config is None)")
 
             model_value = getattr(self, "model", None)
             if model_value is not None:

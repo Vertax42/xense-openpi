@@ -21,6 +21,7 @@ class BiARX5RealEnvironment(_environment.Environment):
         right_arm_port: str = "can3",
         log_level: str = "INFO",
         use_multithreading: bool = True,
+        enable_tactile_sensors: bool = False,
         reset_position: Optional[List[float]] = None,
         render_height: int = 224,
         render_width: int = 224,
@@ -33,6 +34,7 @@ class BiARX5RealEnvironment(_environment.Environment):
             right_arm_port=right_arm_port,
             log_level=log_level,
             use_multithreading=use_multithreading,
+            enable_tactile_sensors=enable_tactile_sensors,
             reset_position=reset_position,
             setup_robot=setup_robot,  # 传递 setup_robot 参数
             controller_dt=controller_dt,  # 传递控制频率参数
