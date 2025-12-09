@@ -37,6 +37,10 @@ class Pi0Config(_model.BaseModelConfig):
     # real time chunking config
     rtc_config: _rtc_config.RTCConfig | None = None
 
+    # training-time RTC config
+    enable_training_time_rtc: bool = False
+    max_delay: int = 10  # steps 330ms @ 30fps
+
     def __post_init__(self):
         if self.max_token_len is None:
             object.__setattr__(self, "max_token_len", 200 if self.pi05 else 48)

@@ -137,6 +137,9 @@ class Pi0(_model.BaseModel):
             self.rtc_processor = rtc_processor
             self._rtc_enabled = True
 
+        self._enable_training_time_rtc = config.enable_training_time_rtc
+        self._max_delay = config.max_delay
+
     @at.typecheck
     def embed_prefix(
         self, obs: _model.Observation
@@ -243,31 +246,73 @@ class Pi0(_model.BaseModel):
             preprocess_rng, observation, train=train
         )
 
-        batch_shape = actions.shape[:-2]
-        noise = jax.random.normal(noise_rng, actions.shape)
-        time = jax.random.beta(time_rng, 1.5, 1, batch_shape) * 0.999 + 0.001
-        time_expanded = time[..., None, None]
-        x_t = time_expanded * noise + (1 - time_expanded) * actions
-        u_t = noise - actions
+        if not self._enable_training_time_rtc:
+            batch_shape = actions.shape[:-2]
+            noise = jax.random.normal(noise_rng, actions.shape)
+            time = jax.random.beta(time_rng, 1.5, 1, batch_shape) * 0.999 + 0.001
+            time_expanded = time[..., None, None]
 
-        # one big forward pass of prefix + suffix at once
-        prefix_tokens, prefix_mask, prefix_ar_mask = self.embed_prefix(observation)
-        suffix_tokens, suffix_mask, suffix_ar_mask, adarms_cond = self.embed_suffix(
-            observation, x_t, time
-        )
-        input_mask = jnp.concatenate([prefix_mask, suffix_mask], axis=1)
-        ar_mask = jnp.concatenate([prefix_ar_mask, suffix_ar_mask], axis=0)
-        attn_mask = make_attn_mask(input_mask, ar_mask)
-        positions = jnp.cumsum(input_mask, axis=1) - 1
-        (prefix_out, suffix_out), _ = self.PaliGemma.llm(
-            [prefix_tokens, suffix_tokens],
-            mask=attn_mask,
-            positions=positions,
-            adarms_cond=[None, adarms_cond],
-        )
-        v_t = self.action_out_proj(suffix_out[:, -self.action_horizon :])
+            x_t = time_expanded * noise + (1 - time_expanded) * actions
+            u_t = noise - actions
 
-        return jnp.mean(jnp.square(v_t - u_t), axis=-1)
+            # one big forward pass of prefix + suffix at once
+            prefix_tokens, prefix_mask, prefix_ar_mask = self.embed_prefix(observation)
+            suffix_tokens, suffix_mask, suffix_ar_mask, adarms_cond = self.embed_suffix(
+                observation, x_t, time
+            )
+            input_mask = jnp.concatenate([prefix_mask, suffix_mask], axis=1)
+            ar_mask = jnp.concatenate([prefix_ar_mask, suffix_ar_mask], axis=0)
+            attn_mask = make_attn_mask(input_mask, ar_mask)
+            positions = jnp.cumsum(input_mask, axis=1) - 1
+            (prefix_out, suffix_out), _ = self.PaliGemma.llm(
+                [prefix_tokens, suffix_tokens],
+                mask=attn_mask,
+                positions=positions,
+                adarms_cond=[None, adarms_cond],
+            )
+            v_t = self.action_out_proj(suffix_out[:, -self.action_horizon :])
+            return jnp.mean(jnp.square(v_t - u_t), axis=-1)
+        else:
+            b, ah, ad = actions.shape  # (batch_size, action_horizon, action_dim)
+            noise_rng, time_rng, delay_rng = jax.random.split(rng)
+            time = jax.random.uniform(time_rng, (b,))
+            noise = jax.random.normal(noise_rng, (b, ah, ad))
+
+            # sample delays from some distribution of choice:
+            # here, we use Uniform[0, max_delay), as in our real-world experiments
+            delay = jax.random.randint(delay_rng, (b,), 0, self._max_delay)
+
+            # set time to 1.0 for the action prefix
+            # time becomes shape (batch_size, action_horizon)
+            prefix_mask = jnp.arange(ah)[None, :] < delay[:, None]
+            time = jnp.where(prefix_mask, 1.0, time[:, None])
+            # compute the noisy action postfix and run the model
+            x_t = time[:, :, None] * noise + (1 - time[:, :, None]) * actions
+            u_t = noise - actions
+            # one big forward pass of prefix + suffix at once
+            prefix_tokens, prefix_mask, prefix_ar_mask = self.embed_prefix(observation)
+            suffix_tokens, suffix_mask, suffix_ar_mask, adarms_cond = self.embed_suffix(
+                observation, x_t, time
+            )
+            input_mask = jnp.concatenate([prefix_mask, suffix_mask], axis=1)
+            ar_mask = jnp.concatenate([prefix_ar_mask, suffix_ar_mask], axis=0)
+            attn_mask = make_attn_mask(input_mask, ar_mask)
+            positions = jnp.cumsum(input_mask, axis=1) - 1
+            (prefix_out, suffix_out), _ = self.PaliGemma.llm(
+                [prefix_tokens, suffix_tokens],
+                mask=attn_mask,
+                positions=positions,
+                adarms_cond=[None, adarms_cond],
+            )
+            v_t = self.action_out_proj(suffix_out[:, -self.action_horizon :])
+            loss = (v_t - u_t) ** 2
+
+            # compute the loss on the postfix only
+            postfix_mask = jnp.logical_not(prefix_mask)[:, :, None]
+            loss = jnp.sum(loss * postfix_mask, axis=-1) / (
+                jnp.sum(postfix_mask, axis=-1) + 1e-8
+            )
+            return loss
 
     @override
     def sample_actions(
