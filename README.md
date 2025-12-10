@@ -380,6 +380,9 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_full_test -
 # 20251204 pick and place chips train
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_arx5_lora_pick_and_place_chips --exp-name=pi05_base_arx5_lora_pick_and_place_chips_20251204 --overwrite
 
+# 20251209 training time rtc
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_arx5_lora_training_time_rtc --exp-name=training_time_rtc_20251209 --overwrite
+
 ## inference time commands
 copy checkpoints from autodl server to local server
 ```bash
