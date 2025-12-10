@@ -1224,15 +1224,15 @@ _CONFIGS = [
             paligemma_variant="gemma_2b_lora",
             action_expert_variant="gemma_300m_lora",
             pi05=True,
-            rtc_config=_rtc_config.RTCConfig(
-                enabled=True,
-                execution_horizon=30,
-                max_guidance_weight=10.0,  # Increased for stronger RTC guidance
-                prefix_attention_schedule=_rtc_config.RTCAttentionSchedule.EXP,
-            ),
+            # rtc_config=_rtc_config.RTCConfig(
+            #     enabled=True,
+            #     execution_horizon=30,
+            #     max_guidance_weight=10.0,  # Increased for stronger RTC guidance
+            #     prefix_attention_schedule=_rtc_config.RTCAttentionSchedule.EXP,
+            # ),
         ),
         data=LeRobotAlohaDataConfig(
-            repo_id="Vertax/bi_arx5_pick_and_place_cube",  # your datasets repo_id
+            repo_id="Vertax/xense_bi_arx5_pick_and_place_cube",  # your datasets repo_id
             adapt_to_pi=False,
             repack_transforms=_transforms.Group(
                 inputs=[
