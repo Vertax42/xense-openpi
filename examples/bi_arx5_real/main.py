@@ -1,9 +1,5 @@
 import dataclasses
-import logging
-import sys
-from typing import Any
 
-import numpy as np
 import tyro
 from openpi_client import action_chunk_broker
 from openpi_client import rtc_action_chunk_broker
@@ -14,6 +10,9 @@ from openpi_client.runtime import environment as _environment
 from typing_extensions import override
 
 import examples.bi_arx5_real.env as _env
+from examples.bi_arx5_real.logger import get_logger
+
+logger = get_logger("BiARX5Main")
 
 
 class DryRunEnvironmentWrapper(_environment.Environment):
@@ -28,11 +27,11 @@ class DryRunEnvironmentWrapper(_environment.Environment):
     def reset(self) -> None:
         self._episode_count += 1
         self._step_count = 0
-        logging.info(f"\n{'='*80}")
-        logging.info(
+        logger.info(f"\n{'='*80}")
+        logger.info(
             f"🔄 Episode {self._episode_count} - environment reset (dry run mode)"
         )
-        logging.info(f"{'='*80}\n")
+        logger.info(f"{'='*80}\n")
         self._wrapped_env.reset()
 
     @override
@@ -66,14 +65,14 @@ class DryRunEnvironmentWrapper(_environment.Environment):
         # print policy output action
         actions = action.get("actions")
         if actions is not None:
-            logging.info(f"\n{'─'*80}")
-            logging.info(f"🎯 step {self._step_count} - policy output action:")
-            logging.info(f"{'─'*80}")
+            logger.info(f"\n{'─'*80}")
+            logger.info(f"🎯 step {self._step_count} - policy output action:")
+            logger.info(f"{'─'*80}")
 
             # print detailed action information
-            # logging.info(f"action dimension: {actions.shape}")
-            # logging.info(f"action type: {actions.dtype}")
-            # logging.info(f"action range: [{actions.min():.6f}, {actions.max():.6f}]")
+            # logger.info(f"action dimension: {actions.shape}")
+            # logger.info(f"action type: {actions.dtype}")
+            # logger.info(f"action range: [{actions.min():.6f}, {actions.max():.6f}]")
 
             # print each joint action value
             joint_names = [
@@ -93,19 +92,19 @@ class DryRunEnvironmentWrapper(_environment.Environment):
                 "right_gripper",
             ]
 
-            logging.info("\ndetailed action values:")
+            logger.info("\ndetailed action values:")
             for i, (name, value) in enumerate(zip(joint_names, actions)):
-                logging.info(f"  [{i:2d}] {name:12s}: {value:+.6f} rad")
+                logger.info(f"  [{i:2d}] {name:12s}: {value:+.6f} rad")
 
-            logging.info("\ngripper action:")
-            logging.info(f"  left gripper (index 6):  {actions[6]:.6f}")
-            logging.info(f"  right gripper (index 13): {actions[13]:.6f}")
+            logger.info("\ngripper action:")
+            logger.info(f"  left gripper (index 6):  {actions[6]:.6f}")
+            logger.info(f"  right gripper (index 13): {actions[13]:.6f}")
 
-            logging.info(f"{'─'*80}")
-            logging.info(
+            logger.info(f"{'─'*80}")
+            logger.info(
                 "⚠️  dry run mode: action intercepted, not actually executed to robot"
             )
-            logging.info(f"{'─'*80}\n")
+            logger.info(f"{'─'*80}\n")
 
 
 @dataclasses.dataclass
@@ -150,9 +149,9 @@ def main(args: Args) -> None:
         host=args.host,
         port=args.port,
     )
-    logging.info(f"Server metadata: {ws_client_policy.get_server_metadata()}")
 
     metadata = ws_client_policy.get_server_metadata()
+    logger.info(f"Server metadata: {metadata}")
 
     # create base environment
     base_environment = _env.BiARX5RealEnvironment(
@@ -168,15 +167,15 @@ def main(args: Args) -> None:
 
     # if dry run mode, wrap the environment with the wrapper
     if args.dry_run:
-        logging.info("\n" + "=" * 80)
-        logging.info("🔍 dry run mode enabled")
-        logging.info("   - policy action output will be printed")
-        logging.info("   - action will not be sent to robot")
-        logging.info("   - robot will stay in initial position")
-        logging.info("=" * 80 + "\n")
+        logger.info("\n" + "=" * 80)
+        logger.info("🔍 dry run mode enabled")
+        logger.info("   - policy action output will be printed")
+        logger.info("   - action will not be sent to robot")
+        logger.info("   - robot will stay in initial position")
+        logger.info("=" * 80 + "\n")
         environment = DryRunEnvironmentWrapper(base_environment)
     else:
-        logging.info("✅ normal mode: action will be executed to robot")
+        logger.info("✅ normal mode: action will be executed to robot")
         environment = base_environment
 
     if args.rtc_enabled:
@@ -222,21 +221,21 @@ def main(args: Args) -> None:
 
             if hasattr(actual_env, "_env") and hasattr(actual_env._env, "robot"):
                 if actual_env._env.robot.is_connected:
-                    logging.info("safe disconnect robot...")
+                    logger.info("safe disconnect robot...")
                     actual_env._env.disconnect()
-                    logging.info("✓ robot disconnected")
+                    logger.info("✓ robot disconnected")
                 else:
-                    logging.info("robot not connected, no need to disconnect")
+                    logger.info("robot not connected, no need to disconnect")
         except Exception as disconnect_error:
-            logging.warning(f"error disconnecting robot: {disconnect_error}")
+            logger.warn(f"error disconnecting robot: {disconnect_error}")
 
     try:
         runtime.run()
     except KeyboardInterrupt:
-        logging.info("\n⚠️  detected user interrupt (Ctrl+C)")
-        logging.info("program exited safely")
+        logger.info("\n⚠️  detected user interrupt (Ctrl+C)")
+        logger.info("program exited safely")
     except Exception as e:
-        logging.error(f"\n❌ runtime error: {e}")
+        logger.error(f"\n❌ runtime error: {e}")
         import traceback
 
         traceback.print_exc()
@@ -247,5 +246,4 @@ def main(args: Args) -> None:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, force=True)
     tyro.cli(main)
