@@ -38,6 +38,7 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
         rtc_enabled: bool = True,
         execution_horizon: int = 20,
         blend_steps: int = 0,
+        default_delay: int = 4,  # Default inference_delay for warmup and fallback
     ):
         self._policy = policy
         self._frequency_hz = frequency_hz
@@ -46,6 +47,7 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
             action_queue_size_to_get_new_actions
         )
         self._execution_horizon = execution_horizon
+        self._default_delay = default_delay
 
         self._action_queue = ActionQueue(
             rtc_enabled=rtc_enabled, blend_steps=blend_steps
@@ -57,10 +59,16 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
         # Track last real_delay to use as next estimated_delay
         self._last_real_delay: Optional[int] = None
 
+        # Track warmup state: first inference is for JIT, second is for real execution
+        self._warmup_done = False
+        self._warmup_prev_chunk: Optional[np.ndarray] = (
+            None  # Store first inference result for second inference
+        )
+
         self._stop_event = threading.Event()
         self._first_inference_done = (
             threading.Event()
-        )  # Signal when first actions are ready
+        )  # Signal when actions are ready for execution (after warmup)
         self._thread = threading.Thread(target=self._get_actions_loop, daemon=True)
         self._thread_started = False
 
@@ -93,47 +101,44 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
                         self._action_queue.get_action_index()
                     )
 
-                    # Estimate inference delay using last real_delay if available
-                    # This makes estimated_delay track actual delay more closely
-                    if self._last_real_delay is not None:
-                        estimated_delay_steps = self._last_real_delay
-                    else:
-                        # First inference: use a reasonable default (e.g., 4-5 steps)
-                        # This is better than 0 which would cause mismatch
-                        # Typical inference + network latency is ~100-150ms at 30Hz = 3-5 steps
-                        inference_latency = self._latency_tracker.max()
-                        if inference_latency > 0:
-                            estimated_delay_steps = math.ceil(
-                                inference_latency / self._time_per_chunk
+                    # Determine prev_chunk_left_over and estimated_delay based on warmup state
+                    if not self._warmup_done:
+                        if self._warmup_prev_chunk is None:
+                            # ===== WARMUP PHASE 1: First inference (JIT compilation) =====
+                            # Send None, use default_delay, result will NOT be executed
+                            prev_chunk_left_over = None
+                            estimated_delay_steps = self._default_delay
+                            logger.info(
+                                f"🔥 WARMUP Phase 1: First inference (JIT). "
+                                f"Sending prev_chunk_left_over=None, inference_delay={estimated_delay_steps}"
                             )
                         else:
-                            # Default to 4 steps for first inference
-                            estimated_delay_steps = 4
-
-                    # Add +2 buffer to ensure actions near truncation point are
-                    # in the "strongly constrained" region of RTC guidance.
-                    # RTC weights: idx < inference_delay -> weight=1.0 (strong)
-                    #              idx >= inference_delay -> weight decays
-                    # By passing inference_delay+2, we ensure actions[real_delay] and
-                    # actions[real_delay+1] have weight=1.0, providing more margin.
-                    # inference_delay_for_model = estimated_delay_steps + 2
-
-                    # Perform inference
-                    logger.info(
-                        f"RTC: Starting new inference. Queue size: {self._action_queue.qsize()}, "
-                        f"estimated_delay={estimated_delay_steps}"
-                    )
-
-                    # Get leftover actions for RTC guidance
-                    # Server handles None gracefully for first inference
-                    prev_chunk_left_over = self._action_queue.get_left_over()
-                    if prev_chunk_left_over is not None:
-                        logger.info(
-                            f"RTC: Sending prev_chunk_left_over to server, shape: {prev_chunk_left_over.shape}"
-                        )
+                            # ===== WARMUP PHASE 2: Second inference (with prev_chunk from phase 1) =====
+                            # Use last N actions from warmup result as prev_chunk_left_over
+                            # This ensures consistent shape for JAX JIT
+                            prev_chunk_left_over = self._warmup_prev_chunk[
+                                -self._action_queue_size_to_get_new_actions :
+                            ]
+                            estimated_delay_steps = self._default_delay
+                            logger.info(
+                                f"🔥 WARMUP Phase 2: Second inference with prev_chunk. "
+                                f"Sending prev_chunk_left_over shape: {prev_chunk_left_over.shape}, "
+                                f"inference_delay={estimated_delay_steps}"
+                            )
                     else:
+                        # ===== NORMAL OPERATION =====
+                        # Estimate inference delay using last real_delay if available
+                        if self._last_real_delay is not None:
+                            estimated_delay_steps = self._last_real_delay
+                        else:
+                            estimated_delay_steps = self._default_delay
+
+                        # Get leftover actions for RTC guidance
+                        prev_chunk_left_over = self._action_queue.get_left_over()
                         logger.info(
-                            "RTC: Sending prev_chunk_left_over=None to server (first inference)"
+                            f"RTC: Starting inference. Queue size: {self._action_queue.qsize()}, "
+                            f"estimated_delay={estimated_delay_steps}, "
+                            f"prev_chunk shape: {prev_chunk_left_over.shape if prev_chunk_left_over is not None else None}"
                         )
 
                     results = self._policy.infer(
@@ -148,16 +153,7 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
                     self._latency_tracker.add(latency)
                     inference_delay_steps = math.ceil(latency / self._time_per_chunk)
 
-                    # logger.info(
-                    #     f"RTC: Inference complete. Round-trip latency: {latency * 1000:.2f} ms. "
-                    #     f"Delay steps: {inference_delay_steps} (estimated: {estimated_delay_steps})"
-                    # )
-
                     # Get actions
-                    # Prefer original actions if available (for RTC correctness), else processed actions
-                    # Note: ActionQueue expects both, but if we only have one, we use it for both.
-                    # In the client-server setup, "actions" is usually the processed one.
-                    # "actions_original" might be available if we modified the server.
                     processed_actions = results.get("actions")
                     original_actions = results.get("actions_original")
 
@@ -165,38 +161,40 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
                         logger.error("Policy returned no 'actions' key")
                         continue
 
-                    # Debug: check if we have original actions
                     if original_actions is None:
-                        logger.warn(
-                            "RTC: No 'actions_original' from server, using processed actions. "
-                            "This may cause RTC guidance mismatch!"
-                        )
                         original_actions = processed_actions
-                    else:
-                        logger.debug(
-                            f"RTC: Got actions_original shape: {original_actions.shape}"
-                        )
 
-                    # Merge into queue
-                    # current_index = self._action_queue.get_action_index()
-                    # indexes_diff = current_index - action_index_before_inference
+                    # Handle warmup phases
+                    if not self._warmup_done:
+                        if self._warmup_prev_chunk is None:
+                            # ===== WARMUP PHASE 1 COMPLETE =====
+                            # Save original_actions for next inference, do NOT execute
+                            self._warmup_prev_chunk = original_actions
+                            logger.info(
+                                f"✅ WARMUP Phase 1 complete. Latency: {latency * 1000:.0f}ms. "
+                                f"Saved {original_actions.shape} for Phase 2. Actions NOT executed."
+                            )
+                            # Don't set _first_inference_done, continue to Phase 2
+                            continue
+                        else:
+                            # ===== WARMUP PHASE 2 COMPLETE =====
+                            # This inference has correct prev_chunk shape, execute these actions
+                            self._warmup_done = True
+                            logger.info(
+                                f"✅ WARMUP Phase 2 complete. Latency: {latency * 1000:.0f}ms. "
+                                f"Warmup done, actions will be executed."
+                            )
+                            # Fall through to normal merge logic below
 
-                    # logger.info(
-                    #     f"RTC: Merging actions. Real delay: {inference_delay_steps}, "
-                    #     f"Index before: {action_index_before_inference}, "
-                    #     f"Current index: {current_index}, "
-                    #     f"Index diff: {indexes_diff}"
-                    # )
-
+                    # Normal operation: merge actions into queue
                     if inference_delay_steps >= len(processed_actions):
                         logger.error(
                             f"RTC: CRITICAL - Inference delay ({inference_delay_steps} steps) "
                             f"exceeds action length ({len(processed_actions)} steps). "
-                            "All actions will be discarded! Increase execution_horizon or reduce latency."
+                            "All actions will be discarded!"
                         )
 
                     merge_start = time.perf_counter()
-                    # Get real_delay before merge (will be calculated inside merge)
                     real_delay_before_merge = (
                         self._action_queue.get_action_index()
                         - action_index_before_inference
@@ -211,14 +209,9 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
                     logger.info(f"RTC: Merge total time: {merge_ms:.2f}ms")
 
                     # Update last_real_delay for next inference
-                    # Use time-based delay (inference_delay_steps) if step-based delay is 0
-                    # This handles the first inference case where no actions were consumed yet
                     if real_delay_before_merge > 0:
                         self._last_real_delay = real_delay_before_merge
                     else:
-                        # First inference: use a reasonable default, NOT the JIT compilation time
-                        # JIT can take several seconds, which would give a huge inference_delay_steps
-                        # Use a sensible default (e.g., 4 steps) for subsequent inferences
                         # Only use time-based if it's reasonable (< 10 steps)
                         if inference_delay_steps <= 10:
                             self._last_real_delay = inference_delay_steps
@@ -271,7 +264,7 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
             # Wait briefly and retry
             logger.warn("Action queue empty! Waiting...")
             start_wait = time.time()
-            while action is None and (time.time() - start_wait) < 2.0:
+            while action is None and (time.time() - start_wait) < 5.0:
                 time.sleep(0.005)
                 action = self._action_queue.get()
 
@@ -291,6 +284,9 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
         self._action_queue.clear()
         self._first_inference_done.clear()  # Reset for next episode
         self._last_real_delay = None  # Reset delay tracking
+        # Reset warmup state for next episode
+        self._warmup_done = False
+        self._warmup_prev_chunk = None
         with self._latest_obs_lock:
             self._latest_obs = None
 

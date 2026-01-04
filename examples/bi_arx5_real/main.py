@@ -143,6 +143,8 @@ class Args:
     # Number of steps to blend between old and new actions at merge point
     # 0 = no blending (hard switch), 2-3 = smooth transition
     blend_steps: int = 5
+    # Default inference_delay for warmup and fallback (in steps)
+    default_delay: int = 2
 
 
 def main(args: Args) -> None:
@@ -191,6 +193,7 @@ def main(args: Args) -> None:
                     rtc_enabled=args.rtc_enabled,
                     execution_horizon=args.execution_horizon,
                     blend_steps=args.blend_steps,
+                    default_delay=args.default_delay,
                 )
             ),
             subscribers=[],
