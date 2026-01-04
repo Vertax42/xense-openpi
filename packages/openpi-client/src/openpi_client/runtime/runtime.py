@@ -1,10 +1,12 @@
-import logging
 import threading
 import time
 
+from openpi_client.logger import get_logger
 from openpi_client.runtime import agent as _agent
 from openpi_client.runtime import environment as _environment
 from openpi_client.runtime import subscriber as _subscriber
+
+logger = get_logger("Runtime")
 
 
 class Runtime:
@@ -49,7 +51,7 @@ class Runtime:
 
     def _run_episode(self) -> None:
         """Runs a single episode."""
-        logging.info("Starting episode...")
+        logger.info("Starting episode...")
         self._environment.reset()
         self._agent.reset()
         for subscriber in self._subscribers:
@@ -68,7 +70,7 @@ class Runtime:
             now = time.time()
             dt = now - last_step_time
 
-            # logging.info(f"dt={dt*1000:.2f}ms")
+            # logger.info(f"dt={dt*1000:.2f}ms")
 
             if dt < step_time:
                 time.sleep(step_time - dt)
@@ -76,7 +78,7 @@ class Runtime:
             else:
                 last_step_time = now
 
-        logging.info("Episode completed.")
+        logger.info("Episode completed.")
         for subscriber in self._subscribers:
             subscriber.on_episode_end()
 
@@ -106,7 +108,7 @@ class Runtime:
 
         # 每 20 步打印一次详细计时
         # if self._episode_steps % 20 == 0:
-        #     logging.info(
+        #     logger.info(
         #         f"⏱️  Runtime _step_time: "
         #         f"get_observation={((t1-t0)*1000):.2f}ms | "
         #         f"get_action={((t2-t1)*1000):.2f}ms | "

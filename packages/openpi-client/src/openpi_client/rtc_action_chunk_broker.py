@@ -1,4 +1,3 @@
-import logging
 import math
 import threading
 import time
@@ -10,8 +9,9 @@ from typing_extensions import override
 from openpi_client import base_policy as _base_policy
 from openpi_client.action_queue import ActionQueue
 from openpi_client.latency_tracker import LatencyTracker
+from openpi_client.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("RTCActionChunkBroker")
 
 
 class RTCActionChunkBroker(_base_policy.BasePolicy):
@@ -166,7 +166,7 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
 
                     # Debug: check if we have original actions
                     if original_actions is None:
-                        logger.warning(
+                        logger.warn(
                             "RTC: No 'actions_original' from server, using processed actions. "
                             "This may cause RTC guidance mismatch!"
                         )
@@ -268,7 +268,7 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
         if action is None:
             # Queue empty after first inference - this shouldn't happen often
             # Wait briefly and retry
-            logger.warning("Action queue empty! Waiting...")
+            logger.warn("Action queue empty! Waiting...")
             start_wait = time.time()
             while action is None and (time.time() - start_wait) < 2.0:
                 time.sleep(0.005)

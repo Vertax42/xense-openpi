@@ -1,4 +1,3 @@
-import logging
 import time
 from typing import Dict, Optional, Tuple
 
@@ -7,6 +6,9 @@ import websockets.sync.client
 
 from openpi_client import base_policy as _base_policy
 from openpi_client import msgpack_numpy
+from openpi_client.logger import get_logger
+
+logger = get_logger("WebsocketClientPolicy")
 
 
 class WebsocketClientPolicy(_base_policy.BasePolicy):
@@ -32,7 +34,7 @@ class WebsocketClientPolicy(_base_policy.BasePolicy):
         return self._server_metadata
 
     def _wait_for_server(self) -> Tuple[websockets.sync.client.ClientConnection, Dict]:
-        logging.info(f"Waiting for server at {self._uri}...")
+        logger.info(f"Waiting for server at {self._uri}...")
         while True:
             try:
                 headers = (
@@ -49,7 +51,7 @@ class WebsocketClientPolicy(_base_policy.BasePolicy):
                 metadata = msgpack_numpy.unpackb(conn.recv())
                 return conn, metadata
             except ConnectionRefusedError:
-                logging.info("Still waiting for server...")
+                logger.info("Still waiting for server...")
                 time.sleep(5)
 
     @override

@@ -1,10 +1,11 @@
-import logging
 from threading import Lock
 from typing import Optional
 
 import numpy as np
 
-logger = logging.getLogger(__name__)
+from openpi_client.logger import get_logger
+
+logger = get_logger("ActionQueue")
 
 
 class ActionQueue:
@@ -43,7 +44,7 @@ class ActionQueue:
         """
         with self.lock:
             if self.queue is None or self.last_index >= len(self.queue):
-                logger.warning(
+                logger.warn(
                     "Action queue exhausted! No actions available. "
                     "This may cause robot to stall. Consider increasing execution_horizon "
                     "or reducing action_queue_size_to_get_new_actions."
@@ -178,7 +179,9 @@ class ActionQueue:
             align_len = min(truncate_idx, remaining_old, len(new_original_actions))
             if align_len > 0:
                 # This is what was passed to model as prev_chunk_left_over
-                old_aligned = self.original_queue[self.last_index : self.last_index + align_len]
+                old_aligned = self.original_queue[
+                    self.last_index : self.last_index + align_len
+                ]
                 new_aligned = new_original_actions[:align_len]
                 diff_rtc = np.abs(new_aligned - old_aligned)
                 max_diff_rtc = np.max(diff_rtc)
