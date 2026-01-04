@@ -180,14 +180,22 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
                             # ===== WARMUP PHASE 2 COMPLETE =====
                             # This inference has correct prev_chunk shape, execute these actions
                             self._warmup_done = True
+                            # Use estimated_delay (default_delay) instead of actual latency for warmup
+                            # because JIT compilation causes artificially high latency
+                            inference_delay_steps = estimated_delay_steps
                             logger.info(
-                                f"✅ WARMUP Phase 2 complete. Latency: {latency * 1000:.0f}ms. "
-                                f"Warmup done, actions will be executed."
+                                f"✅ WARMUP Phase 2 complete. Latency: {latency * 1000:.0f}ms (JIT). "
+                                f"Using default_delay={estimated_delay_steps} for merge. Warmup done."
                             )
                             # Fall through to normal merge logic below
 
                     # Normal operation: merge actions into queue
-                    if inference_delay_steps >= len(processed_actions):
+                    # Skip CRITICAL check during warmup (Phase 2) since JIT causes high latency
+                    if not self._warmup_done or inference_delay_steps < len(
+                        processed_actions
+                    ):
+                        pass  # OK
+                    else:
                         logger.error(
                             f"RTC: CRITICAL - Inference delay ({inference_delay_steps} steps) "
                             f"exceeds action length ({len(processed_actions)} steps). "
