@@ -129,11 +129,11 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
                     prev_chunk_left_over = self._action_queue.get_left_over()
                     if prev_chunk_left_over is not None:
                         logger.info(
-                            f"RTC: prev_chunk_left_over shape: {prev_chunk_left_over.shape}"
+                            f"RTC: Sending prev_chunk_left_over to server, shape: {prev_chunk_left_over.shape}"
                         )
                     else:
                         logger.info(
-                            "RTC: prev_chunk_left_over is None (first inference)"
+                            "RTC: Sending prev_chunk_left_over=None to server (first inference)"
                         )
 
                     results = self._policy.infer(

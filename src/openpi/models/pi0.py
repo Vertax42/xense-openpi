@@ -475,7 +475,11 @@ class Pi0(_model.BaseModel):
                 "using dummy prev_chunk with inference_delay=0"
             )
             prev_chunk_left_over = jnp.zeros(
-                (batch_size, 1, self.action_dim)
+                (
+                    batch_size,
+                    20,
+                    self.action_dim,
+                )  # 20 is the default action_queue_size_to_get_new_actions
             )  # dummy shape
             inference_delay = 0  # No prefix constraint for first inference
 
