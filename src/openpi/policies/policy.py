@@ -61,8 +61,16 @@ class Policy(BasePolicy):
             self._model.eval()
             self._sample_actions = model.sample_actions
         else:
-            # JAX model setup
-            self._sample_actions = nnx_utils.module_jit(model.sample_actions)
+            # JAX model setup - choose sample method based on training_time_rtc config
+            if getattr(model, "_enable_training_time_rtc", False) and hasattr(
+                model, "training_time_rtc_sample_actions"
+            ):
+                logging.info("Using training_time_rtc_sample_actions for inference")
+                self._sample_actions = nnx_utils.module_jit(
+                    model.training_time_rtc_sample_actions
+                )
+            else:
+                self._sample_actions = nnx_utils.module_jit(model.sample_actions)
             self._rng = rng or jax.random.key(0)
 
     @override

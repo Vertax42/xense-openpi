@@ -465,17 +465,26 @@ class Pi0(_model.BaseModel):
         prev_chunk_left_over = kwargs.get(
             "prev_chunk_left_over"
         )  # shape: (b, remaining_len, ad)
-        inference_delay = kwargs.get("inference_delay")  # shape: (b,)
+        inference_delay = kwargs.get("inference_delay")  # shape: (b,) or scalar
 
         if prev_chunk_left_over is None or inference_delay is None:
             raise ValueError(
                 "training_time_rtc_sample_actions requires 'prev_chunk_left_over' and 'inference_delay' in kwargs"
             )
 
+        # Ensure inference_delay has batch dimension (b,)
+        # It may come as a scalar from the client
+        inference_delay = jnp.atleast_1d(inference_delay)
+
         # Pad or truncate prev_chunk_left_over to action_horizon
         # action_prefix should be padded to (b, action_horizon, action_dim)
         # Only the first delay actions are valid, controlled by action_prefix_mask
         b, remaining_len, ad = prev_chunk_left_over.shape
+
+        # Broadcast inference_delay to batch size if needed
+        if inference_delay.shape[0] == 1 and b > 1:
+            inference_delay = jnp.broadcast_to(inference_delay, (b,))
+
         if remaining_len < self.action_horizon:
             # Pad with zeros
             padding = jnp.zeros((b, self.action_horizon - remaining_len, ad))

@@ -401,7 +401,7 @@ python scripts/serve_policy.py policy:checkpoint --policy.config=tie_shoes_50_ep
 # pick and place chips
 python scripts/serve_policy.py --default-prompt="pick up a potato chip and place it into the chips container" policy:checkpoint --policy.config=pi05_base_arx5_lora_pick_and_place_chips --policy.dir=checkpoints/pi05_base_arx5_lora_pick_and_place_chips/pi05_base_arx5_lora_pick_and_place_chips_20251204/19999
 
-# real time RTC
+# training time RTC
 python scripts/serve_policy.py --default-prompt="pick rgb cubes and place them into the blue box" policy:checkpoint --policy.config=pi05_base_arx5_lora_training_time_rtc --policy.dir=checkpoints/pi05_base_arx5_lora_training_time_rtc/training_time_rtc_20251209/39999
 
 192.168.1.165:8000
