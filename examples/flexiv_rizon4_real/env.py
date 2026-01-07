@@ -62,6 +62,16 @@ class FlexivRizon4RealEnvironment(_environment.Environment):
     def is_episode_complete(self) -> bool:
         return False
 
+    # Camera name mapping from real environment to policy expected names
+    # Policy expects: 'observation/wrist_image_left' (required), 'cam_high', 'cam_right_wrist' (optional)
+    # Real env produces: 'wrist_cam', 'left_tactile', 'right_tactile'
+    CAMERA_NAME_MAP = {
+        "wrist_cam": "observation/wrist_image_left",
+        # Tactile images not used by current policy, but could be mapped if needed:
+        # "left_tactile": "left_tactile",
+        # "right_tactile": "right_tactile",
+    }
+
     @override
     def get_observation(self) -> dict:
         if self._ts is None:
@@ -76,6 +86,11 @@ class FlexivRizon4RealEnvironment(_environment.Environment):
         for cam_name in obs["images"]:
             if "_depth" in cam_name:
                 continue  # Skip depth images
+
+            # Skip cameras not in the mapping (e.g., tactile sensors not used by policy)
+            if cam_name not in self.CAMERA_NAME_MAP:
+                logger.debug(f"Skipping camera {cam_name} (not in CAMERA_NAME_MAP)")
+                continue
 
             # Original image is already uint8 format (H, W, 3)
             single_img = obs["images"][cam_name]
@@ -96,10 +111,18 @@ class FlexivRizon4RealEnvironment(_environment.Environment):
             resized_img = resized_batch[0]
 
             # Convert to OpenPI expected format (H,W,C) -> (C,H,W)
-            processed_images[cam_name] = einops.rearrange(resized_img, "h w c -> c h w")
+            # Use mapped name for policy compatibility
+            policy_cam_name = self.CAMERA_NAME_MAP[cam_name]
+            processed_images[policy_cam_name] = einops.rearrange(resized_img, "h w c -> c h w")
+
+        # Reorder state from gripper_last to gripper_first format
+        # real_env outputs: [tcp_x, tcp_y, tcp_z, qw, qx, qy, qz, gripper] (gripper_last)
+        # policy expects:   [gripper, tcp_x, tcp_y, tcp_z, qw, qx, qy, qz] (gripper_first)
+        qpos = obs["qpos"]
+        state_gripper_first = np.concatenate([qpos[-1:], qpos[:-1]])
 
         return {
-            "state": obs["qpos"],
+            "state": state_gripper_first,
             "images": processed_images,
             # prompt is injected by policy server's InjectDefaultPrompt
         }

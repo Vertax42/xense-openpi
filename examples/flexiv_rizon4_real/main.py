@@ -33,9 +33,10 @@ from typing_extensions import override
 import examples.flexiv_rizon4_real.env as _env
 from lerobot.utils.robot_utils import get_logger
 from openpi_client import rtc_action_chunk_broker
+from openpi_client import action_chunk_broker
 from openpi_client import websocket_client_policy as _websocket_client_policy
 from openpi_client.runtime import environment as _environment
-from openpi_client.runtime import policy_agent as _policy_agent
+from openpi_client.runtime.agents import policy_agent as _policy_agent
 from openpi_client.runtime import runtime as _runtime
 
 logger = get_logger("FlexivRizon4Main")
@@ -103,7 +104,7 @@ class Args:
     # Robot configuration
     robot_sn: str = "Rizon4-063423"
     control_mode: str = (
-        "cartesian_motion_force"  # "joint_impedance" or "cartesian_motion_force"
+        "cartesian_motion_force_control"  # "joint_impedance_control" or "cartesian_motion_force_control"
     )
     use_gripper: bool = True
     use_force: bool = False
@@ -121,9 +122,10 @@ class Args:
     render_width: int = 224
 
     # Runtime settings
-    runtime_hz: float = 25.0  # Control frequency
+    action_horizon: int = 20
+    runtime_hz: float = 10.0  # Control frequency
     num_episodes: int = 1
-    max_episode_steps: int = 10000
+    max_episode_steps: int = 100000
 
     # Dry run mode (robot connected but actions not executed)
     dry_run: bool = False
@@ -197,7 +199,12 @@ def main(args: Args) -> None:
     else:
         runtime = _runtime.Runtime(
             environment=environment,
-            agent=_policy_agent.PolicyAgent(policy=ws_client_policy),
+            agent=_policy_agent.PolicyAgent(
+                policy=action_chunk_broker.ActionChunkBroker(
+                    policy=ws_client_policy,
+                    action_horizon=args.action_horizon,
+                )
+            ),
             subscribers=[],
             max_hz=args.runtime_hz,
             num_episodes=args.num_episodes,
