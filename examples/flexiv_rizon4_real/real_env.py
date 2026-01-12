@@ -21,6 +21,7 @@ logger = get_logger("FlexivRizon4RealEnv")
 
 # Constants for Flexiv Rizon4
 JOINT_DOF = 7  # 7-DOF robot
+CARTESIAN_STATE_DIM = 10  # x, y, z, r6d[6], gripper_pos
 
 
 class FlexivRizon4RealEnv:
@@ -28,11 +29,19 @@ class FlexivRizon4RealEnv:
 
     Based on lerobot FlexivRizon4 implementation.
 
-    Action space (JOINT_IMPEDANCE mode):
-        [joint_1.pos, ..., joint_7.pos, gripper.pos]  # 8 dimensions
+    Action/State space:
+        JOINT_IMPEDANCE mode (8 dimensions):
+            [joint_1.pos, ..., joint_7.pos, gripper_pos]
+
+        CARTESIAN_MOTION_FORCE mode (10 dimensions with 6D rotation representation):
+            [x, y, z, r1, r2, r3, r4, r5, r6, gripper_pos]
+
+            Where r1-r6 is the 6D rotation representation (first two columns of rotation matrix):
+            - [r1, r2, r3]: First column of rotation matrix
+            - [r4, r5, r6]: Second column of rotation matrix
 
     Observation space:
-        {"qpos": joint positions (7) + gripper (1) = 8D,
+        {"qpos": state array (8D or 10D depending on control mode),
          "images": {"wrist_cam": (H,W,3), "left_tactile": (H,W,3), "right_tactile": (H,W,3), ...}}
     """
 
@@ -88,11 +97,11 @@ class FlexivRizon4RealEnv:
             raise
 
     def get_qpos(self, obs: dict) -> np.ndarray:
-        """Get joint positions from observation.
+        """Get state from observation.
 
         Returns:
-            For JOINT_IMPEDANCE mode: [joint_1.pos, ..., joint_7.pos, gripper.pos] (8D)
-            For CARTESIAN_MOTION_FORCE mode: [tcp.x, ..., tcp.qz, gripper.pos] (8D)
+            For JOINT_IMPEDANCE mode: [joint_1.pos, ..., joint_7.pos, gripper_pos] (8D)
+            For CARTESIAN_MOTION_FORCE mode: [x, y, z, r1, r2, r3, r4, r5, r6, gripper_pos] (10D)
         """
         if self.config.control_mode == ControlMode.JOINT_IMPEDANCE:
             # Joint positions (7D) + gripper (1D)
@@ -101,33 +110,16 @@ class FlexivRizon4RealEnv:
             return np.array(joints + gripper, dtype=np.float32)
 
         elif self.config.control_mode == ControlMode.CARTESIAN_MOTION_FORCE:
-            # TCP pose (7D) + gripper (1D)
-            tcp_keys = [
-                "tcp.x",
-                "tcp.y",
-                "tcp.z",
-                "tcp.qw",
-                "tcp.qx",
-                "tcp.qy",
-                "tcp.qz",
-            ]
-            tcp_pose = [obs[k] for k in tcp_keys]
+            # Position (3D)
+            position = [obs["x"], obs["y"], obs["z"]]
+
+            # 6D rotation representation (6D)
+            rotation = [obs[f"r{i}"] for i in range(1, 7)]
+
+            # Gripper (1D)
             gripper = [obs["gripper.pos"]]
 
-            if self.config.use_force:
-                # + external wrench (6D)
-                wrench_keys = [
-                    "tcp.fx",
-                    "tcp.fy",
-                    "tcp.fz",
-                    "tcp.mx",
-                    "tcp.my",
-                    "tcp.mz",
-                ]
-                wrench = [obs[k] for k in wrench_keys]
-                return np.array(tcp_pose + wrench + gripper, dtype=np.float32)
-
-            return np.array(tcp_pose + gripper, dtype=np.float32)
+            return np.array(position + rotation + gripper, dtype=np.float32)
 
         else:
             raise ValueError(f"Unsupported control_mode: {self.config.control_mode}")
@@ -188,8 +180,8 @@ class FlexivRizon4RealEnv:
         """Execute action on the robot.
 
         Args:
-            action: For JOINT_IMPEDANCE mode: [joint_1.pos, ..., joint_7.pos, gripper.pos] (8D)
-                    For CARTESIAN mode: [tcp.x, ..., tcp.qz, gripper.pos] (8D or 14D with force)
+            action: For JOINT_IMPEDANCE mode: [joint_1.pos, ..., joint_7.pos, gripper_pos] (8D)
+                    For CARTESIAN_MOTION_FORCE mode: [x, y, z, r1, r2, r3, r4, r5, r6, gripper_pos] (10D)
         """
         # Convert action array to dictionary format expected by FlexivRizon4
         action_dict = {}
@@ -201,36 +193,17 @@ class FlexivRizon4RealEnv:
             action_dict["gripper.pos"] = float(action[JOINT_DOF])
 
         elif self.config.control_mode == ControlMode.CARTESIAN_MOTION_FORCE:
-            # TCP pose (7D)
-            tcp_keys = [
-                "tcp.x",
-                "tcp.y",
-                "tcp.z",
-                "tcp.qw",
-                "tcp.qx",
-                "tcp.qy",
-                "tcp.qz",
-            ]
-            for i, key in enumerate(tcp_keys):
-                action_dict[key] = float(action[i])
+            # Position (3D)
+            action_dict["x"] = float(action[0])
+            action_dict["y"] = float(action[1])
+            action_dict["z"] = float(action[2])
 
-            if self.config.use_force:
-                # + target wrench (6D)
-                wrench_keys = [
-                    "tcp.fx",
-                    "tcp.fy",
-                    "tcp.fz",
-                    "tcp.mx",
-                    "tcp.my",
-                    "tcp.mz",
-                ]
-                for i, key in enumerate(wrench_keys):
-                    action_dict[key] = float(action[7 + i])
-                # Gripper at index 13
-                action_dict["gripper.pos"] = float(action[13])
-            else:
-                # Gripper at index 7
-                action_dict["gripper.pos"] = float(action[7])
+            # 6D rotation representation (6D)
+            for i in range(1, 7):
+                action_dict[f"r{i}"] = float(action[2 + i])
+
+            # Gripper (1D)
+            action_dict["gripper.pos"] = float(action[9])
 
         else:
             raise ValueError(f"Unsupported control_mode: {self.config.control_mode}")
