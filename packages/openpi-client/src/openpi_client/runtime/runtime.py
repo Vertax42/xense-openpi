@@ -84,21 +84,21 @@ class Runtime:
 
     def _step(self) -> None:
         """A single step of the runtime loop."""
-        # import time
+        import time
 
-        # t0 = time.time()
+        t0 = time.time()
         observation = self._environment.get_observation()
-        # t1 = time.time()
+        t1 = time.time()
 
         action = self._agent.get_action(observation)
-        # t2 = time.time()
+        t2 = time.time()
 
         self._environment.apply_action(action)
-        # t3 = time.time()
+        t3 = time.time()
 
         for subscriber in self._subscribers:
             subscriber.on_step(observation, action)
-        # t4 = time.time()
+        t4 = time.time()
 
         if self._environment.is_episode_complete() or (
             self._max_episode_steps > 0
@@ -106,13 +106,13 @@ class Runtime:
         ):
             self.mark_episode_complete()
 
-        # 每 20 步打印一次详细计时
+        # every 20 steps print the detailed timing
         # if self._episode_steps % 20 == 0:
-        #     logger.info(
-        #         f"⏱️  Runtime _step_time: "
-        #         f"get_observation={((t1-t0)*1000):.2f}ms | "
-        #         f"get_action={((t2-t1)*1000):.2f}ms | "
-        #         f"apply_action={((t3-t2)*1000):.2f}ms | "
-        #         f"subscriber={((t4-t3)*1000):.2f}ms | "
-        #         f"total_time={((t4-t0)*1000):.2f}ms"
-        #     )
+        logger.info(
+                f"⏱️  Runtime _step_time: "
+                f"get_observation={((t1-t0)*1000):.2f}ms | "
+                f"get_action={((t2-t1)*1000):.2f}ms | "
+                f"apply_action={((t3-t2)*1000):.2f}ms | "
+                f"subscriber={((t4-t3)*1000):.2f}ms | "
+                f"total_time={((t4-t0)*1000):.2f}ms"
+            )
