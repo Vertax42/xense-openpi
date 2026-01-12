@@ -384,6 +384,10 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_arx5_lora_t
 python scripts/compute_norm_stats.py --config-name pi05_base_xense_flare_open_lock
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_xense_flare_open_lock --exp-name=xense_flare_open_lock_20260108 --overwrite / --resume
 
+# 20260110 xense flare wipe vase
+python scripts/compute_norm_stats.py --config-name pi05_base_xense_flare_wipe_vase
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_xense_flare_wipe_vase --exp-name=xense_flare_wipe_vase_20260110 --overwrite
+
 ## inference time commands
 copy checkpoints from autodl server to local server
 ```bash
@@ -408,6 +412,8 @@ python scripts/serve_policy.py --default-prompt="pick rgb cubes and place them i
 # xense flare open lock 20260105
 python scripts/serve_policy.py --default-prompt="open the lock with the key" policy:checkpoint --policy.config=pi05_base_xense_flare_open_lock --policy.dir=checkpoints/pi05_base_xense_flare_open_lock/xense_flare_open_lock_20260105/19999
 
+# xense flare wipe vase 20260110
+python scripts/serve_policy.py --default-prompt="wipe the vase" policy:checkpoint --policy.config=pi05_base_xense_flare_wipe_vase --policy.dir=checkpoints/pi05_base_xense_flare_wipe_vase/xense_flare_wipe_vase_20260110/19999
 
 192.168.1.165:8000
 vertax@Jarvis:~$ nc -zv 192.168.2.215 8000
