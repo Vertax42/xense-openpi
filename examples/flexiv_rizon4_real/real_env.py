@@ -118,7 +118,7 @@ class FlexivRizon4RealEnv:
             position = [obs["tcp.x"], obs["tcp.y"], obs["tcp.z"]]
 
             # 6D rotation representation (6D)
-            rotation = [obs[f"tcp.r{i + 1}"] for i in range(6)]
+            rotation = [obs[f"tcp.r{i}"] for i in range(1, 7)]
 
             return np.array(position + rotation + gripper, dtype=np.float32)
 
