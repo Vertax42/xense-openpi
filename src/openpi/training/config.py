@@ -1327,8 +1327,6 @@ _CONFIGS = [
     TrainConfig(
         name="pi05_base_xense_flare_pick_and_place_cube",
         model=pi0_config.Pi0Config(
-            paligemma_variant="gemma_2b_lora",
-            action_expert_variant="gemma_300m_lora",
             pi05=True,
             enable_training_time_rtc=True,
             max_delay=10,
@@ -1353,14 +1351,10 @@ _CONFIGS = [
                 prompt_from_task=True,  # Set to True for prompt by task_name
             ),
         ),
-        freeze_filter=pi0_config.Pi0Config(
-            pi05=True,
-            paligemma_variant="gemma_2b_lora",
-            action_expert_variant="gemma_300m_lora",
-        ).get_freeze_filter(),
+        ema_decay=None,
         batch_size=64,  # the total batch_size not pre_gpu batch_size
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_droid/params"),
-        num_train_steps=40_000,
+        num_train_steps=20_000,
         num_workers=1,  # default 2
         fsdp_devices=1,  # refer line 359
     ),
