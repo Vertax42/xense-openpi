@@ -5,11 +5,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Repository Overview
 
 OpenPI is Physical Intelligence's open-source robotics models repository containing:
-- π₀ (pi0): Flow-based vision-language-action model (VLA)  
+- π₀ (pi0): Flow-based vision-language-action model (VLA)
 - π₀-FAST: Autoregressive VLA based on FAST action tokenizer
 - π₀.₅ (pi05): Upgraded version with better open-world generalization
 
 The codebase supports both JAX and PyTorch implementations, with JAX being the primary framework and PyTorch being newly added.
+
+## ⚠️ GPU Requirements
+
+**This project MUST run on NVIDIA GPU platforms with CUDA support.**
+
+- **Minimum VRAM:** 24GB
+- **CUDA Version:** CUDA 12 (JAX requires CUDA 12, PyTorch uses CUDA 12.8)
+- **Recommended GPUs:** RTX 4090 (24GB), A100 (80GB), H100
+- **CPU-only execution is NOT supported**
+- **Supported OS:** Ubuntu 22.04 or later (Linux only)
 
 ## Essential Commands
 
@@ -91,7 +101,7 @@ uv run examples/convert_jax_model_to_pytorch.py --checkpoint_dir <jax_checkpoint
 ### Core Components
 - **`src/openpi/models/`**: JAX model implementations (pi0, pi0_fast, gemma, tokenizers)
 - **`src/openpi/models_pytorch/`**: PyTorch model implementations and transformers patches
-- **`src/openpi/policies/`**: Robot platform-specific policy adapters (ALOHA, DROID, LIBERO)
+- **`src/openpi/policies/`**: Robot platform-specific policy adapters (DROID, Xense platforms)
 - **`src/openpi/training/`**: Training configurations, data processing, and optimization
 - **`src/openpi/shared/`**: Shared utilities (download, normalization, transforms)
 - **`src/openpi/serving/`**: Policy serving infrastructure (websocket server)
@@ -101,7 +111,7 @@ The training system uses a centralized config system in `src/openpi/training/con
 - **DataConfig**: Defines data processing pipelines for different datasets
 - **TrainConfig**: Defines training hyperparameters, model selection, and optimization
 - **AssetsConfig**: Manages normalization statistics and other training assets
-- Named configs are registered in `_CONFIGS` dict (e.g., `pi0_droid`, `pi05_libero`)
+- Named configs are registered in `_CONFIGS` dict (e.g., `pi0_droid`, `pi05_droid`, `pi05_base_arx5_lora`)
 
 ### Policy Architecture
 Each robot platform has a dedicated policy class that handles:
@@ -111,7 +121,7 @@ Each robot platform has a dedicated policy class that handles:
 
 ### Model Checkpoints
 - Base models: `gs://openpi-assets/checkpoints/{pi0_base, pi0_fast_base, pi05_base}`
-- Fine-tuned models: `gs://openpi-assets/checkpoints/{pi0_droid, pi05_droid, pi0_aloha_*}`
+- Fine-tuned models: `gs://openpi-assets/checkpoints/{pi0_droid, pi05_droid}`
 - Auto-downloaded to `~/.cache/openpi` (configurable via `OPENPI_DATA_HOME`)
 
 ## Development Patterns
@@ -123,8 +133,8 @@ Each robot platform has a dedicated policy class that handles:
 4. Create training config linking your policy, data config, and base model
 
 ### Fine-tuning Workflow
-1. Convert your data to LeRobot format (see `examples/libero/convert_libero_data_to_lerobot.py`)
-2. Create configs for your dataset following LIBERO examples
+1. Convert your data to LeRobot format (see examples in `examples/droid` and `examples/bi_arx5_real`)
+2. Create configs for your dataset following DROID or Xense examples in `config.py`
 3. Compute normalization stats: `scripts/compute_norm_stats.py`
 4. Train: `scripts/train.py` or `scripts/train_pytorch.py`
 5. Serve: `scripts/serve_policy.py`
@@ -143,9 +153,11 @@ Each robot platform has a dedicated policy class that handles:
 - PyTorch uses either full bfloat16 or float32 (controlled by `pytorch_training_precision`)
 
 ### Training Requirements
-- Inference: >8GB GPU (RTX 4090)
-- LoRA fine-tuning: >22.5GB GPU  
-- Full fine-tuning: >70GB GPU (A100/H100)
+**NVIDIA GPU with CUDA 12 and minimum 24GB VRAM is required.**
+
+- Inference: 24GB+ GPU (RTX 4090)
+- LoRA fine-tuning: 24GB+ GPU (RTX 4090)
+- Full fine-tuning: 70GB+ GPU (A100 80GB / H100)
 
 ## Data Pipeline
 
