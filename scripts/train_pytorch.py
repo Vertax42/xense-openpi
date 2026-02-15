@@ -623,7 +623,7 @@ def train_loop(config: _config.TrainConfig):
 
 
 def main():
-    init_logging()
+    init_logging()  # init logging system
     config = _config.cli()
     train_loop(config)
 

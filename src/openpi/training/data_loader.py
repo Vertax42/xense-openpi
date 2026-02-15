@@ -184,6 +184,9 @@ def create_torch_dataset(
         delta_timestamps={
             key: [t / dataset_meta.fps for t in range(action_horizon)] for key in data_config.action_sequence_keys
         },
+        # Increase tolerance_s slightly to handle floating-point precision issues in video timestamps.
+        # The default 1e-4 can fail when timestamp differences are exactly at the boundary.
+        tolerance_s=2e-4,
     )
 
     if data_config.prompt_from_task:

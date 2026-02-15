@@ -775,12 +775,12 @@ _CONFIGS = [
         fsdp_devices=1,
     ),
     TrainConfig(
-        name="tie_shoes_white_lora_finetune_1030_25_episodes",
+        name="tie_shoes_50_episodes_lora_no_adjust_training_time_rtc_0202",
         model=pi0_config.Pi0Config(
-            action_horizon=50,
             paligemma_variant="gemma_2b_lora",
-            action_expert_variant="gemma_300m_lora",
             pi05=True,
+            enable_training_time_rtc=True,
+            max_delay=10,
         ),
         data=LeRobotAlohaDataConfig(
             repo_id="Vertax/xense_bi_arx5_tie_white_shoelaces_1030_no_adjust",
@@ -802,22 +802,21 @@ _CONFIGS = [
                 ]
             ),
             base_config=DataConfig(
-                prompt_from_task=True,
+                prompt_from_task=True,  # Set to True for prompt by task_name
             ),
         ),
         freeze_filter=pi0_config.Pi0Config(
-            action_horizon=50,
-            paligemma_variant="gemma_2b_lora",
-            action_expert_variant="gemma_300m_lora",
             pi05=True,
+            paligemma_variant="gemma_2b_lora",
         ).get_freeze_filter(),
-        batch_size=64,
+        ema_decay=None,
+        batch_size=64,  # the total batch_size not pre_gpu batch_size
         weight_loader=weight_loaders.CheckpointWeightLoader(
-            "/root//autodl-tmp/openpi/checkpoints/pi05_base_arx5_tie_shoes_high_quality_white_lora_1028/tie_shoes_white_lora/19999/params"
+            "/home/ubuntu/openpi/checkpoints/tie_shoes_50_episodes_lora_no_adjust_1101/tie_shoes_50_episodes_lora_no_adjust_1103_40000/16000/params"
         ),
-        num_train_steps=20_000,
-        num_workers=44,
-        fsdp_devices=4,
+        num_train_steps=40_000,  # 20000
+        num_workers=2,  # default 2
+        fsdp_devices=1,  # refer line 359
     ),
     TrainConfig(
         name="lerobot040_test_bi_arx5",

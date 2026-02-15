@@ -354,6 +354,102 @@ export NCCL_IB_DISABLE=1
 export NCCL_NET_GDR_LEVEL=0
 export NCCL_TOPO_FILE=/dev/null
 export CUDA_VISIBLE_DEVICES=0,1,2,3
+
+torchrun --nproc_per_node=1 scripts/train_pytorch.py pi05_base_arx5_full --exp-name=xense_bi_arx5_pick_and_place_cube_full --resume ; shutdown -h +5
+
+torchrun --nproc_per_node=4 scripts/train_pytorch.py pi05_base_arx5_tie_shoes_full --exp-name=tie_shoes_full_100_episodes_torch --overwrite ; shutdown -h +5
+
+python scripts/compute_norm_stats.py --config-name pi05_base_arx5_full
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train_pytorch.py pi05_base_arx5_full --exp-name=xense_bi_arx5_pick_and_place_cube --overwrite / --resume
+
+# 20251021_XenseRobotics_TieShoes
+python scripts/compute_norm_stats.py --config-name pi05_base_arx5_tie_shoes_lora
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_arx5_tie_shoes_lora --exp-name=tie_shoes_lora_100_episodes --overwrite / --resume
+
+# 20251027_TieShoes_HighQuality_Lora
+python scripts/compute_norm_stats.py --config-name pi05_base_arx5_tie_shoes_high_quality_lora_1027
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_arx5_tie_shoes_high_quality_lora_1027 --exp-name=tie_shoes_lora_50_episodes --overwrite / --resume
+
+# 20251028_TieShoes_HighQuality_White_Lora
+python scripts/compute_norm_stats.py --config-name pi05_base_arx5_tie_shoes_high_quality_white_lora_1028
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_arx5_tie_shoes_high_quality_white_lora_1028 --exp-name=tie_shoes_white_lora_50_episodes --overwrite / --resume
+
+# 20251101_TIeShoes_25episodes_lora_no_adjust
+python scripts/compute_norm_stats.py --config-name tie_shoes_white_lora_finetune_1030_25_episodes
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py tie_shoes_white_lora_finetune_1030_25_episodes --exp-name=tie_shoes_25_episodes_lora_no_adjust_1101 --overwrite / --resume
+
+# 20251021_AutoDL_TieShoes
+jax[cuda13]
+orbax-checkpoint==0.11.20
+
+# 20251103 TieShoes_50episodes_lora_no_adjust
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py tie_shoes_50_episodes_lora_no_adjust_1101 --exp-name tie_shoes_50_episodes_lora_no_adjust_1103_40000 --overwrite
+
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py tie_shoes_50_episodes_lora_no_adjust_1101 --exp-name tie_shoes_50_episodes_lora_no_adjust_1103_40000 --resume
+
+python scripts/compute_norm_stats.py --config-name pi05_base_arx5_tie_shoes_full
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_arx5_tie_shoes_full --exp-name=tie_shoes_full_100_episodes_gpu_test --overwrite / --resume
+
+# test 20251111 lerobot040_test_bi_arx5
+python scripts/compute_norm_stats.py --config-name pi05_base_full_test
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_full_test --exp-name=pi05_base_full_test --overwrite / --resume
+
+# 20251204 pick and place chips train
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_arx5_lora_pick_and_place_chips --exp-name=pi05_base_arx5_lora_pick_and_place_chips_20251204 --overwrite
+
+# 20251209 training time rtc
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_arx5_lora_training_time_rtc --exp-name=training_time_rtc_20251209 --overwrite
+
+# 20260108 xense flare open lock
+python scripts/compute_norm_stats.py --config-name pi05_base_xense_flare_open_lock
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_xense_flare_open_lock --exp-name=xense_flare_open_lock_20260108 --overwrite / --resume
+
+# 20260113 xense flare wipe vase
+python scripts/compute_norm_stats.py --config-name pi05_base_xense_flare_wipe_vase
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_xense_flare_wipe_vase --exp-name=xense_flare_wipe_vase_20260113 --overwrite / --resume
+
+# 20260115 xense flare pick and place cube
+python scripts/compute_norm_stats.py --config-name pi05_base_xense_flare_pick_and_place_cube
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_xense_flare_pick_and_place_cube --exp-name=xense_flare_pick_and_place_cube_20260115 --overwrite / --resume
+
+# 20260202 tie shoes 50 episodes lora no adjust training time rtc
+python scripts/compute_norm_stats.py --config-name tie_shoes_50_episodes_lora_no_adjust_training_time_rtc_0202
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py tie_shoes_50_episodes_lora_no_adjust_training_time_rtc_0202 --exp-name=tie_shoes_50_episodes_lora_no_adjust_training_time_rtc_0202 --overwrite / --resume
+## inference time commands
+copy checkpoints from autodl server to local server
+```bash
+scp -P 15443 -r root@connect.westd.seetacloud.com:/root/autodl-tmp/openpi/checkpoints/pi05_base_arx5_tie_shoes_full/tie_shoes_full_100_episodes_torch/20000 .
+````
+
+```bash
+# pick and place
+python scripts/serve_policy.py --default-prompt="pick rgb cubes and place them into the blue box" policy:checkpoint --policy.config=pi05_base_arx5_lora --policy.dir=checkpoints/pi05_base_arx5_lora/xense_bi_arx5_pick_and_place_cube_arx5_assets/33000
+
+# tie shoes
+python scripts/serve_policy.py --default-prompt="tie shoelaces" policy:checkpoint --policy.config=pi05_base_arx5_tie_shoes_lora --policy.dir=checkpoints/pi05_base_arx5_tie_shoes_lora/tie_shoes_lora_50_episodes/33000
+
+python scripts/serve_policy.py policy:checkpoint --policy.config=tie_shoes_50_episodes_lora_no_adjust_1101 --policy.dir=checkpoints/tie_shoes_50_episodes_lora_no_adjust_1101/tie_shoes_50_episodes_lora_no_adjust_1103_40000/16000
+
+# pick and place chips
+python scripts/serve_policy.py --default-prompt="pick up a potato chip and place it into the chips container" policy:checkpoint --policy.config=pi05_base_arx5_lora_pick_and_place_chips --policy.dir=checkpoints/pi05_base_arx5_lora_pick_and_place_chips/pi05_base_arx5_lora_pick_and_place_chips_20251204/19999
+
+# training time RTC
+python scripts/serve_policy.py --default-prompt="pick rgb cubes and place them into the blue box" policy:checkpoint --policy.config=pi05_base_arx5_lora_training_time_rtc --policy.dir=checkpoints/pi05_base_arx5_lora_training_time_rtc/training_time_rtc_20251209/39999
+
+# open lock 20260108
+python scripts/serve_policy.py --default-prompt="open the lock with the key" policy:checkpoint --policy.config=pi05_base_xense_flare_open_lock --policy.dir=checkpoints/pi05_base_xense_flare_open_lock/xense_flare_open_lock_20260108/19999
+
+# wipe vase 20260115
+python scripts/serve_policy.py --default-prompt="wipe the vase" policy:checkpoint --policy.config=pi05_base_xense_flare_wipe_vase --policy.dir=checkpoints/pi05_base_xense_flare_wipe_vase/xense_flare_wipe_vase_20260113/19999
+
+# pick and place cube 20260115
+python scripts/serve_policy.py --default-prompt="pick up cubes in rgb order from the table and place them in the blue box" policy:checkpoint --policy.config=pi05_base_xense_flare_pick_and_place_cube --policy.dir=checkpoints/pi05_base_xense_flare_pick_and_place_cube/xense_flare_pick_and_place_cube_20260115/39999
+
+192.168.1.165:8000
+vertax@Jarvis:~$ nc -zv 192.168.2.215 8000
+Connection to 192.168.2.215 8000 port [tcp/*] succeeded!
+python -m examples.bi_arx5_real.main     --args.host 192.168.2.215     --args.port 8000     --args.dry_run  --args.enable_tactile_sensors
+
 ```
 
 ### Training Commands
