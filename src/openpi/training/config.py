@@ -20,7 +20,6 @@ import openpi.models.tokenizer as _tokenizer
 import openpi.policies.aloha_policy as aloha_policy
 import openpi.policies.droid_policy as droid_policy
 import openpi.policies.xense_flare_policy as xense_flare_policy
-import openpi.rtc.configuration_rtc as _rtc_config
 import openpi.shared.download as _download
 import openpi.shared.normalize as _normalize
 import openpi.training.droid_rlds_dataset as droid_rlds_dataset
@@ -233,6 +232,7 @@ class LeRobotAlohaDataConfig(DataConfigFactory):
     This config provides a flexible base for dual-arm manipulation robots with similar
     observation/action spaces. Used by Xense BiARX5 and other ALOHA-compatible platforms.
     """
+
     # If true, will convert joint dimensions to deltas with respect to the current state before passing to the model.
     # Gripper dimensions will remain in absolute values.
     use_delta_joint_actions: bool = True
@@ -581,61 +581,6 @@ _CONFIGS = [
         ),
     ),
     TrainConfig(
-        name="pi05_base_arx5_tie_shoes_lora",
-        model=pi0_config.Pi0Config(
-            action_horizon=30,
-            paligemma_variant="gemma_2b_lora",
-            action_expert_variant="gemma_300m_lora",
-            pi05=True,
-            rtc_config=_rtc_config.RTCConfig(
-                enabled=True,
-                execution_horizon=30,
-                max_guidance_weight=10.0,  # Increased for stronger RTC guidance
-                prefix_attention_schedule=_rtc_config.RTCAttentionSchedule.EXP,
-            ),
-        ),
-        data=LeRobotAlohaDataConfig(
-            repo_id="Vertax/xense_bi_arx5_tie_shoelaces",  # your datasets repo_id
-            adapt_to_pi=False,
-            repack_transforms=_transforms.Group(
-                inputs=[
-                    _transforms.RepackTransform(
-                        {
-                            "images": {
-                                "cam_high": "observation.images.head",
-                                "cam_left_wrist": "observation.images.left_wrist",
-                                "cam_right_wrist": "observation.images.right_wrist",
-                            },
-                            "state": "observation.state",
-                            "actions": "action",
-                            "prompt": "prompt",
-                        }
-                    )
-                ]
-            ),
-            base_config=DataConfig(
-                # local_files_only=True,  # Set to True for local-only datasets.
-                prompt_from_task=True,  # Set to True for prompt by task_name
-            ),
-        ),
-        freeze_filter=pi0_config.Pi0Config(
-            action_horizon=30,
-            paligemma_variant="gemma_2b_lora",
-            action_expert_variant="gemma_300m_lora",
-            pi05=True,
-        ).get_freeze_filter(),
-        batch_size=64,  # the total batch_size not pre_gpu batch_size
-        weight_loader=weight_loaders.CheckpointWeightLoader(
-            "/home/ubuntu/openpi/checkpoints/pi05_base_arx5_tie_shoes_lora/tie_shoes_lora_50_episodes/33000/params"
-        ),
-        # weight_loader=weight_loaders.CheckpointWeightLoader(
-        #     "s3://openpi-assets/checkpoints/pi05_base/params"
-        # ),
-        num_train_steps=60_000,  # 20000
-        num_workers=2,  # default 2
-        fsdp_devices=1,  # refer line 359
-    ),
-    TrainConfig(
         name="pi05_base_arx5_tie_shoes_high_quality_lora_1027",
         model=pi0_config.Pi0Config(
             action_horizon=30,
@@ -727,57 +672,6 @@ _CONFIGS = [
         fsdp_devices=1,
     ),
     TrainConfig(
-        name="tie_shoes_50_episodes_lora_no_adjust_1101",
-        model=pi0_config.Pi0Config(
-            action_horizon=30,
-            paligemma_variant="gemma_2b_lora",
-            action_expert_variant="gemma_300m_lora",
-            pi05=True,
-            rtc_config=_rtc_config.RTCConfig(
-                enabled=True,
-                execution_horizon=10,
-                max_guidance_weight=1.0,
-                prefix_attention_schedule=_rtc_config.RTCAttentionSchedule.EXP,
-            ),
-        ),
-        data=LeRobotAlohaDataConfig(
-            repo_id="Vertax/xense_bi_arx5_tie_white_shoelaces_1030_no_adjust",
-            adapt_to_pi=False,
-            repack_transforms=_transforms.Group(
-                inputs=[
-                    _transforms.RepackTransform(
-                        {
-                            "images": {
-                                "cam_high": "observation.images.head",
-                                "cam_left_wrist": "observation.images.left_wrist",
-                                "cam_right_wrist": "observation.images.right_wrist",
-                            },
-                            "state": "observation.state",
-                            "actions": "action",
-                            "prompt": "prompt",
-                        }
-                    )
-                ]
-            ),
-            base_config=DataConfig(
-                prompt_from_task=True,
-            ),
-        ),
-        freeze_filter=pi0_config.Pi0Config(
-            action_horizon=30,
-            paligemma_variant="gemma_2b_lora",
-            action_expert_variant="gemma_300m_lora",
-            pi05=True,
-        ).get_freeze_filter(),
-        batch_size=64,
-        weight_loader=weight_loaders.CheckpointWeightLoader(
-            "/home/ubuntu/openpi/checkpoints/tie_shoes_50_episodes_lora_no_adjust_1101/tie_shoes_25_episodes_lora_no_adjust_1101/19999/params"
-        ),
-        num_train_steps=40_000,
-        num_workers=2,
-        fsdp_devices=1,
-    ),
-    TrainConfig(
         name="tie_shoes_50_episodes_lora_no_adjust_training_time_rtc_0202",
         model=pi0_config.Pi0Config(
             paligemma_variant="gemma_2b_lora",
@@ -822,77 +716,25 @@ _CONFIGS = [
         fsdp_devices=1,  # refer line 359
     ),
     TrainConfig(
-        name="lerobot040_test_bi_arx5",
+        name="pi05_base_xense_flare_open_lock_rtc_0228",
         model=pi0_config.Pi0Config(
-            action_horizon=30,
             paligemma_variant="gemma_2b_lora",
-            action_expert_variant="gemma_300m_lora",
             pi05=True,
+            enable_training_time_rtc=True,
+            max_delay=10,
         ),
-        data=LeRobotAlohaDataConfig(
-            repo_id="Vertax/lerobot040_test_bi_arx5",  # your datasets repo_id
-            adapt_to_pi=False,
+        data=LeRobotXenseFlareDataConfig(
+            repo_id="Vertax/xense_flare_open_lock_20260108",  # your datasets repo_id
+            use_delta_cartesian_actions=True,
+            default_prompt="open the lock with the key",
             repack_transforms=_transforms.Group(
                 inputs=[
                     _transforms.RepackTransform(
                         {
-                            "images": {
-                                "cam_high": "observation.images.head",
-                                "cam_left_wrist": "observation.images.left_wrist",
-                                "cam_right_wrist": "observation.images.right_wrist",
-                            },
+                            "images": {"observation/wrist_image_left": "observation.images.wrist_cam"},
                             "state": "observation.state",
                             "actions": "action",
-                            # In lerobot v3.0, 'task' field is automatically added
                             "prompt": "task",
-                        }
-                    )
-                ]
-            ),
-            base_config=DataConfig(
-                prompt_from_task=False,
-            ),
-        ),
-        freeze_filter=pi0_config.Pi0Config(
-            action_horizon=30,
-            paligemma_variant="gemma_2b_lora",
-            action_expert_variant="gemma_300m_lora",
-            pi05=True,
-        ).get_freeze_filter(),
-        batch_size=64,  # the total batch_size not pre_gpu batch_size
-        weight_loader=weight_loaders.CheckpointWeightLoader("s3://openpi-assets/checkpoints/pi05_base/params"),
-        num_train_steps=20_000,  # 20000
-        num_workers=2,  # default 2
-        fsdp_devices=1,  # refer line 359
-    ),
-    TrainConfig(
-        name="pi05_base_arx5_lora",
-        model=pi0_config.Pi0Config(
-            paligemma_variant="gemma_2b_lora",
-            action_expert_variant="gemma_300m_lora",
-            pi05=True,
-            # rtc_config=_rtc_config.RTCConfig(
-            #     enabled=True,
-            #     execution_horizon=30,
-            #     max_guidance_weight=10.0,  # Increased for stronger RTC guidance
-            #     prefix_attention_schedule=_rtc_config.RTCAttentionSchedule.EXP,
-            # ),
-        ),
-        data=LeRobotAlohaDataConfig(
-            repo_id="Vertax/xense_bi_arx5_pick_and_place_cube",  # your datasets repo_id
-            adapt_to_pi=False,
-            repack_transforms=_transforms.Group(
-                inputs=[
-                    _transforms.RepackTransform(
-                        {
-                            "images": {
-                                "cam_high": "observation.images.head",
-                                "cam_left_wrist": "observation.images.left_wrist",
-                                "cam_right_wrist": "observation.images.right_wrist",
-                            },
-                            "state": "observation.state",
-                            "actions": "action",
-                            "prompt": "prompt",
                         }
                     )
                 ]
@@ -902,15 +744,16 @@ _CONFIGS = [
             ),
         ),
         freeze_filter=pi0_config.Pi0Config(
-            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
+            pi05=True,
+            paligemma_variant="gemma_2b_lora",
         ).get_freeze_filter(),
+        ema_decay=None,
         batch_size=64,  # the total batch_size not pre_gpu batch_size
-        # weight_loader=weight_loaders.CheckpointWeightLoader(
-        #     "/home/ubuntu/openpi/checkpoints/pi05_base_arx5_lora/bi_arx5_pick_and_place_cube/19999/params"
-        # ),
-        weight_loader=weight_loaders.CheckpointWeightLoader("s3://openpi-assets/checkpoints/pi05_base/params"),
-        num_train_steps=40_000,  # 20000
-        num_workers=2,  # default 2
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "/home/ubuntu/openpi/checkpoints/pi05_base_xense_flare_open_lock/xense_flare_open_lock_20260108/19999/params"
+        ),
+        num_train_steps=40_000,
+        num_workers=1,  # default 2
         fsdp_devices=1,  # refer line 359
     ),
     TrainConfig(

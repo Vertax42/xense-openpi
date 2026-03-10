@@ -7,7 +7,6 @@ import tyro
 
 from openpi.policies import policy as _policy
 from openpi.policies import policy_config as _policy_config
-from openpi.rtc.configuration_rtc import RTCConfig, RTCAttentionSchedule
 from openpi.serving import websocket_policy_server
 from openpi.training import config as _config
 
@@ -56,11 +55,6 @@ class Args:
     # Specifies how to load the policy. If not provided, the default policy for the environment will be used.
     policy: Checkpoint | Default = dataclasses.field(default_factory=Default)
 
-    # RTC (Real-Time Chunking) settings
-    rtc_enabled: bool = False
-    rtc_execution_horizon: int = 30
-    rtc_max_guidance_weight: float = 1.0
-
 
 # Default checkpoints that should be used for each environment.
 DEFAULT_CHECKPOINT: dict[EnvMode, Checkpoint] = {
@@ -83,9 +77,7 @@ DEFAULT_CHECKPOINT: dict[EnvMode, Checkpoint] = {
 }
 
 
-def create_default_policy(
-    env: EnvMode, *, default_prompt: str | None = None
-) -> _policy.Policy:
+def create_default_policy(env: EnvMode, *, default_prompt: str | None = None) -> _policy.Policy:
     """Create a default policy for the given environment."""
     if checkpoint := DEFAULT_CHECKPOINT.get(env):
         return _policy_config.create_trained_policy(
@@ -112,24 +104,6 @@ def create_policy(args: Args) -> _policy.Policy:
 def main(args: Args) -> None:
     policy = create_policy(args)
     policy_metadata = policy.metadata
-
-    # Enable RTC if requested via command line
-    if args.rtc_enabled:
-        rtc_config = RTCConfig(
-            enabled=True,
-            execution_horizon=args.rtc_execution_horizon,
-            max_guidance_weight=args.rtc_max_guidance_weight,
-            prefix_attention_schedule=RTCAttentionSchedule.EXP,
-        )
-        # Apply RTC config to the model
-        if hasattr(policy, "_model") and hasattr(policy._model, "config"):
-            policy._model.config.rtc_config = rtc_config
-            # Reinitialize RTC processor
-            if hasattr(policy._model, "init_rtc_processor"):
-                policy._model.init_rtc_processor()
-            logging.info(f"RTC enabled via command line: {rtc_config}")
-        else:
-            logging.warning("Could not enable RTC: model doesn't support rtc_config")
 
     # Record the policy's behavior.
     if args.record:

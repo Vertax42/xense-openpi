@@ -8,8 +8,6 @@ from typing_extensions import override
 
 from openpi.models import model as _model
 import openpi.models.gemma as _gemma
-import openpi.rtc.configuration_rtc as _rtc_config
-from openpi.rtc.modeling_rtc_jax import RTCProcessorJax
 from openpi.shared import array_typing as at
 import openpi.shared.nnx_utils as nnx_utils
 
@@ -34,9 +32,6 @@ class Pi0Config(_model.BaseModelConfig):
     # This config option is not used directly by the model, but it is read by the ModelTransformFactory.
     discrete_state_input: bool = None  # type: ignore
 
-    # real time chunking config
-    rtc_config: _rtc_config.RTCConfig | None = None
-
     # training-time RTC config
     enable_training_time_rtc: bool = False
     max_delay: int = 10  # steps 330ms @ 30fps
@@ -58,19 +53,11 @@ class Pi0Config(_model.BaseModelConfig):
     def create(self, rng: at.KeyArrayLike) -> "Pi0":
         from openpi.models.pi0 import Pi0
 
-        rtc_processor = None
-        if self.rtc_config is not None:
-            rtc_processor = RTCProcessorJax(self.rtc_config)
-
-        return Pi0(self, rtc_processor=rtc_processor, rngs=nnx.Rngs(rng))
+        return Pi0(self, rngs=nnx.Rngs(rng))
 
     @override
-    def inputs_spec(
-        self, *, batch_size: int = 1
-    ) -> tuple[_model.Observation, _model.Actions]:
-        image_spec = jax.ShapeDtypeStruct(
-            [batch_size, *_model.IMAGE_RESOLUTION, 3], jnp.float32
-        )
+    def inputs_spec(self, *, batch_size: int = 1) -> tuple[_model.Observation, _model.Actions]:
+        image_spec = jax.ShapeDtypeStruct([batch_size, *_model.IMAGE_RESOLUTION, 3], jnp.float32)
         image_mask_spec = jax.ShapeDtypeStruct([batch_size], jnp.bool_)
 
         with at.disable_typechecking():
@@ -86,16 +73,10 @@ class Pi0Config(_model.BaseModelConfig):
                     "right_wrist_0_rgb": image_mask_spec,
                 },
                 state=jax.ShapeDtypeStruct([batch_size, self.action_dim], jnp.float32),
-                tokenized_prompt=jax.ShapeDtypeStruct(
-                    [batch_size, self.max_token_len], jnp.int32
-                ),
-                tokenized_prompt_mask=jax.ShapeDtypeStruct(
-                    [batch_size, self.max_token_len], bool
-                ),
+                tokenized_prompt=jax.ShapeDtypeStruct([batch_size, self.max_token_len], jnp.int32),
+                tokenized_prompt_mask=jax.ShapeDtypeStruct([batch_size, self.max_token_len], bool),
             )
-        action_spec = jax.ShapeDtypeStruct(
-            [batch_size, self.action_horizon, self.action_dim], jnp.float32
-        )
+        action_spec = jax.ShapeDtypeStruct([batch_size, self.action_horizon, self.action_dim], jnp.float32)
 
         return observation_spec, action_spec
 

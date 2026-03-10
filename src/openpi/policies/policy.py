@@ -30,7 +30,6 @@ class Policy(BasePolicy):
         transforms: Sequence[_transforms.DataTransformFn] = (),
         output_transforms: Sequence[_transforms.DataTransformFn] = (),
         sample_kwargs: dict[str, Any] | None = None,
-        rtc_kwargs: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
         pytorch_device: str = "cpu",
         is_pytorch: bool = False,
@@ -66,9 +65,7 @@ class Policy(BasePolicy):
                 model, "training_time_rtc_sample_actions"
             ):
                 logging.info("Using training_time_rtc_sample_actions for inference")
-                self._sample_actions = nnx_utils.module_jit(
-                    model.training_time_rtc_sample_actions
-                )
+                self._sample_actions = nnx_utils.module_jit(model.training_time_rtc_sample_actions)
             else:
                 self._sample_actions = nnx_utils.module_jit(model.sample_actions)
             self._rng = rng or jax.random.key(0)
@@ -85,9 +82,7 @@ class Policy(BasePolicy):
         else:
             # Convert inputs to PyTorch tensors and move to correct device
             inputs = jax.tree.map(
-                lambda x: torch.from_numpy(np.array(x)).to(self._pytorch_device)[
-                    None, ...
-                ],
+                lambda x: torch.from_numpy(np.array(x)).to(self._pytorch_device)[None, ...],
                 inputs,
             )
             sample_rng_or_pytorch_device = self._pytorch_device
@@ -116,15 +111,9 @@ class Policy(BasePolicy):
             sample_kwargs[k] = v
 
         if noise is not None:
-            noise = (
-                torch.from_numpy(noise).to(self._pytorch_device)
-                if self._is_pytorch_model
-                else jnp.asarray(noise)
-            )
+            noise = torch.from_numpy(noise).to(self._pytorch_device) if self._is_pytorch_model else jnp.asarray(noise)
 
-            if (
-                noise.ndim == 2
-            ):  # If noise is (action_horizon, action_dim), add batch dimension
+            if noise.ndim == 2:  # If noise is (action_horizon, action_dim), add batch dimension
                 noise = noise[None, ...]  # Make it (1, action_horizon, action_dim)
             sample_kwargs["noise"] = noise
 
@@ -132,15 +121,11 @@ class Policy(BasePolicy):
         start_time = time.monotonic()
         outputs = {
             "state": inputs["state"],
-            "actions": self._sample_actions(
-                sample_rng_or_pytorch_device, observation, **sample_kwargs
-            ),
+            "actions": self._sample_actions(sample_rng_or_pytorch_device, observation, **sample_kwargs),
         }
         model_time = time.monotonic() - start_time
         if self._is_pytorch_model:
-            outputs = jax.tree.map(
-                lambda x: np.asarray(x[0, ...].detach().cpu()), outputs
-            )
+            outputs = jax.tree.map(lambda x: np.asarray(x[0, ...].detach().cpu()), outputs)
         else:
             outputs = jax.tree.map(lambda x: np.asarray(x[0, ...]), outputs)
 
