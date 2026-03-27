@@ -1,45 +1,48 @@
 #!/usr/bin/env python
-"""Main script for Flexiv Rizon4 real robot inference with OpenPI.
+"""Main script for Flexiv Rizon4 RT robot inference with OpenPI.
 
-This script connects to a Flexiv Rizon4 robot and runs inference using a remote policy server.
+Uses the real-time (RT) driver (flexiv_rt) which runs a C++ RT thread at 1 kHz
+for deterministic streaming Cartesian motion force control.
+
+Only RT_CARTESIAN_MOTION_FORCE mode is supported (no joint impedance).
+Action space: 10D [tcp.x, tcp.y, tcp.z, tcp.r1-r6, gripper.pos]
 
 Example usage:
     # Basic inference (non-RTC mode)
-    python -m examples.flexiv_rizon4_real.main \\
-        --args.host 192.168.2.215 \\
-        --args.port 8000
+    python -m examples.flexiv_rizon4_rt.main \\
+        --host 192.168.2.215 \\
+        --port 8000
 
     # With RTC enabled
-    python -m examples.flexiv_rizon4_real.main \\
-        --args.host 192.168.2.215 \\
-        --args.port 8000 \\
-        --args.rtc_enabled
+    python -m examples.flexiv_rizon4_rt.main \\
+        --host 192.168.2.215 \\
+        --port 8000 \\
+        --rtc_enabled
 
     # Dry run (robot connected but actions not executed)
-    python -m examples.flexiv_rizon4_real.main \\
-        --args.host 192.168.2.215 \\
-        --args.port 8000 \\
-        --args.dry_run
+    python -m examples.flexiv_rizon4_rt.main \\
+        --host 192.168.2.215 \\
+        --port 8000 \\
+        --dry_run
 """
 
 import signal
 import sys
-from dataclasses import dataclass
-from typing import Optional  # noqa: F401
+from dataclasses import dataclass, field
 
 import tyro
 from typing_extensions import override
 
-import examples.flexiv_rizon4_real.env as _env
+import examples.flexiv_rizon4_rt.env as _env
 from lerobot.utils.robot_utils import get_logger
-from openpi_client import rtc_action_chunk_broker
 from openpi_client import action_chunk_broker
+from openpi_client import rtc_action_chunk_broker
 from openpi_client import websocket_client_policy as _websocket_client_policy
 from openpi_client.runtime import environment as _environment
-from openpi_client.runtime.agents import policy_agent as _policy_agent
 from openpi_client.runtime import runtime as _runtime
+from openpi_client.runtime.agents import policy_agent as _policy_agent
 
-logger = get_logger("FlexivRizon4Main")
+logger = get_logger("FlexivRizon4RTMain")
 
 
 class DryRunEnvironmentWrapper(_environment.Environment):
@@ -55,9 +58,7 @@ class DryRunEnvironmentWrapper(_environment.Environment):
         self._episode_count += 1
         self._step_count = 0
         logger.info(f"\n{'='*80}")
-        logger.info(
-            f"🔄 Episode {self._episode_count} - environment reset (dry run mode)"
-        )
+        logger.info(f"🔄 Episode {self._episode_count} - environment reset (dry run mode)")
         logger.info(f"{'='*80}\n")
         self._wrapped_env.reset()
 
@@ -73,29 +74,30 @@ class DryRunEnvironmentWrapper(_environment.Environment):
     def apply_action(self, action: dict) -> None:
         self._step_count += 1
 
-        # Print policy output action
         actions = action.get("actions")
         if actions is not None:
             logger.info(f"\n{'─'*80}")
-            logger.info(f"🎯 Step {self._step_count} - policy output action:")
+            logger.info(f"🎯 Step {self._step_count} - policy output action (10D Cartesian):")
             logger.info(f"{'─'*80}")
 
-            # Print action info based on control mode
-            logger.info(f"Action shape: {actions.shape}")
-            logger.info(f"Action values: {actions}")
+            labels = ["tcp.x", "tcp.y", "tcp.z",
+                      "tcp.r1", "tcp.r2", "tcp.r3",
+                      "tcp.r4", "tcp.r5", "tcp.r6",
+                      "gripper.pos"]
+            for i, (label, value) in enumerate(zip(labels, actions)):
+                logger.info(f"  [{i:2d}] {label:12s}: {value:+.6f}")
 
             logger.info(f"{'─'*80}")
             logger.info("⚠️  DRY RUN mode: action intercepted, NOT executed on robot")
             logger.info(f"{'─'*80}\n")
 
     def disconnect(self) -> None:
-        """Disconnect from the robot."""
         self._wrapped_env.disconnect()
 
 
 @dataclass
 class Args:
-    """Arguments for Flexiv Rizon4 inference."""
+    """Arguments for Flexiv Rizon4 RT inference."""
 
     # Policy server connection
     host: str = "localhost"
@@ -103,29 +105,39 @@ class Args:
 
     # Robot configuration
     robot_sn: str = "Rizon4-063423"
-    control_mode: str = (
-        "cartesian_motion_force_control"  # "joint_impedance_control" or "cartesian_motion_force_control"
-    )
     use_gripper: bool = True
-    gripper_type: str = "flare_gripper"  # "xense_gripper" or "flare_gripper"
     use_force: bool = False
-    use_joint_observation: bool = False
     go_to_start: bool = False
     log_level: str = "INFO"
 
     # Gripper settings
+    gripper_type: str = "flare_gripper"
     gripper_mac_addr: str = "e2b26adbb104"
     gripper_cam_size: tuple[int, int] = (640, 480)
     gripper_rectify_size: tuple[int, int] = (400, 700)
     gripper_max_pos: float = 85.0
+
+    # RT-specific settings
+    stiffness_ratio: float = 0.2
+    start_position_degree: list[float] = field(
+        default_factory=lambda: [-1.70, 4.48, 1.54, 136.22, 0.12, 41.74, -0.18]
+    )
+    zero_ft_sensor_on_connect: bool = True
+    # inner_control_hz: how often the C++ RT callback (1 kHz) consumes a new
+    #   Python command. Range [1, 1000]. Default=1000 (every 1 ms cycle).
+    #   e.g. 500 → consume every 2 ms; 100 → every 10 ms.
+    inner_control_hz: int = 100
+    # interpolate_cmds: smooth motion between Python commands via MinJerk.
+    #   Only effective when inner_control_hz < 1000.
+    interpolate_cmds: bool = False
 
     # Image rendering
     render_height: int = 224
     render_width: int = 224
 
     # Runtime settings
-    action_horizon: int = 30
-    runtime_hz: float = 25.0
+    action_horizon: int = 50
+    runtime_hz: float = 20.0
     num_episodes: int = 1
     max_episode_steps: int = 100000
 
@@ -134,8 +146,8 @@ class Args:
 
     # RTC config
     rtc_enabled: bool = False
-    action_queue_size_to_get_new_actions: int = 20
-    execution_horizon: int = 30
+    action_queue_size_to_get_new_actions: int = 40
+    execution_horizon: int = 50
     blend_steps: int = 3
     default_delay: int = 2
 
@@ -149,26 +161,27 @@ def main(args: Args) -> None:
     metadata = ws_client_policy.get_server_metadata()
     logger.info(f"Server metadata: {metadata}")
 
-    # Create base environment
-    base_environment = _env.FlexivRizon4RealEnvironment(
+    base_environment = _env.FlexivRizon4RTEnvironment(
         robot_sn=args.robot_sn,
-        control_mode=args.control_mode,
         use_gripper=args.use_gripper,
-        gripper_type=args.gripper_type,
         use_force=args.use_force,
-        use_joint_observation=args.use_joint_observation,
         go_to_start=args.go_to_start,
         log_level=args.log_level,
         render_height=args.render_height,
         render_width=args.render_width,
         setup_robot=True,
+        gripper_type=args.gripper_type,
         gripper_mac_addr=args.gripper_mac_addr,
         gripper_cam_size=args.gripper_cam_size,
         gripper_rectify_size=args.gripper_rectify_size,
         gripper_max_pos=args.gripper_max_pos,
+        stiffness_ratio=args.stiffness_ratio,
+        start_position_degree=args.start_position_degree,
+        zero_ft_sensor_on_connect=args.zero_ft_sensor_on_connect,
+        inner_control_hz=args.inner_control_hz,
+        interpolate_cmds=args.interpolate_cmds,
     )
 
-    # If dry run mode, wrap the environment with DryRunEnvironmentWrapper
     if args.dry_run:
         logger.info("\n" + "=" * 80)
         logger.info("🔍 DRY RUN mode enabled")
@@ -178,7 +191,7 @@ def main(args: Args) -> None:
         logger.info("=" * 80 + "\n")
         environment = DryRunEnvironmentWrapper(base_environment)
     else:
-        logger.info("✅ Normal mode: actions will be executed on robot")
+        logger.info("✅ Normal mode: actions will be executed on robot (RT Cartesian)")
         environment = base_environment
 
     if args.rtc_enabled:
@@ -218,25 +231,22 @@ def main(args: Args) -> None:
     def safe_disconnect():
         """Safe disconnect robot."""
         try:
-            # Check if the environment is a wrapper
             actual_env = environment
             if isinstance(environment, DryRunEnvironmentWrapper):
                 actual_env = environment._wrapped_env
 
             if hasattr(actual_env, "_env") and hasattr(actual_env._env, "robot"):
                 if actual_env._env.robot.is_connected:
-                    logger.info("Safe disconnect robot...")
+                    logger.info("Safe disconnect RT robot...")
                     actual_env._env.disconnect()
-                    logger.info("✓ Robot disconnected")
+                    logger.info("✓ RT robot disconnected")
                 else:
                     logger.info("Robot not connected, no need to disconnect")
-        except Exception as disconnect_error:
-            logger.warn(f"Error disconnecting robot: {disconnect_error}")
+        except Exception as e:
+            logger.warning(f"Error disconnecting robot: {e}")
 
-    # Setup graceful shutdown
     def signal_handler(sig, frame):
         logger.info("\n⚠️ Detected user interrupt (Ctrl+C)")
-        logger.info("Program exited safely")
         safe_disconnect()
         sys.exit(0)
 
@@ -249,11 +259,9 @@ def main(args: Args) -> None:
     except Exception as e:
         logger.error(f"\n❌ Runtime error: {e}")
         import traceback
-
         traceback.print_exc()
         raise
     finally:
-        # Always safe disconnect robot
         safe_disconnect()
 
 
