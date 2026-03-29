@@ -30,17 +30,17 @@ class BiARX5RealEnvironment(_environment.Environment):
         preview_time: float = 0.02,  # preview time (seconds)
         control_mode: str = "teach_mode",  # control mode for robot
     ) -> None:
-        self._env = _real_env.make_bi_arx5_real_env(
+        self._env = _real_env.BiARX5RealEnv(
             left_arm_port=left_arm_port,
             right_arm_port=right_arm_port,
             log_level=log_level,
             use_multithreading=use_multithreading,
             enable_tactile_sensors=enable_tactile_sensors,
             reset_position=reset_position,
-            setup_robot=setup_robot,  # pass setup_robot parameter
-            controller_dt=controller_dt,  # pass controller frequency parameter
-            preview_time=preview_time,  # pass preview time parameter
-            control_mode=control_mode,  # pass control mode parameter
+            setup_robot=setup_robot,
+            controller_dt=controller_dt,
+            preview_time=preview_time,
+            control_mode=control_mode,
         )
         self._render_height = render_height
         self._render_width = render_width

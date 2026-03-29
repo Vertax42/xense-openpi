@@ -287,30 +287,3 @@ class BiARX5RealEnv:
                 logger.info("BiARX5 robot disconnected")
             except Exception as e:
                 logger.warn(f"Error during BiARX5 disconnect: {e}")
-
-
-def make_bi_arx5_real_env(
-    left_arm_port: str = "can1",
-    right_arm_port: str = "can3",
-    log_level: str = "INFO",
-    use_multithreading: bool = True,
-    reset_position: Optional[List[float]] = None,
-    enable_tactile_sensors: bool = False,
-    setup_robot: bool = True,
-    controller_dt: float = 0.002,
-    preview_time: float = 0.02,
-    control_mode: str = "teach_mode",
-) -> BiARX5RealEnv:
-    """create BiARX5 real environment (based on lerobot, no ROS version)"""
-    return BiARX5RealEnv(
-        left_arm_port=left_arm_port,
-        right_arm_port=right_arm_port,
-        log_level=log_level,
-        use_multithreading=use_multithreading,
-        reset_position=reset_position,
-        enable_tactile_sensors=enable_tactile_sensors,
-        setup_robot=setup_robot,
-        controller_dt=controller_dt,
-        preview_time=preview_time,
-        control_mode=control_mode,
-    )

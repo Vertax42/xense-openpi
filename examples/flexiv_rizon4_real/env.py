@@ -36,7 +36,7 @@ class FlexivRizon4RealEnvironment(_environment.Environment):
         # External cameras
         cameras: dict | None = None,
     ) -> None:
-        self._env = _real_env.make_flexiv_rizon4_real_env(
+        self._env = _real_env.FlexivRizon4RealEnv(
             robot_sn=robot_sn,
             control_mode=control_mode,
             use_gripper=use_gripper,

@@ -221,36 +221,3 @@ class FlexivRizon4RealEnv:
                 logger.info("Flexiv Rizon4 robot disconnected")
             except Exception as e:
                 logger.warning(f"Error during Flexiv Rizon4 disconnect: {e}")
-
-
-def make_flexiv_rizon4_real_env(
-    robot_sn: str = "Rizon4-062855",
-    control_mode: str = "cartesian_motion_force_control",
-    use_gripper: bool = True,
-    gripper_type: str = "xense_gripper",
-    use_force: bool = False,
-    use_joint_observation: bool = False,
-    go_to_start: bool = True,
-    log_level: str = "INFO",
-    setup_robot: bool = True,
-    gripper_mac_addr: str = "bef1504b5391",
-    gripper_cam_size: tuple[int, int] = (640, 480),
-    gripper_rectify_size: tuple[int, int] = (400, 700),
-    gripper_max_pos: float = 85.0,
-) -> FlexivRizon4RealEnv:
-    """Create Flexiv Rizon4 real environment."""
-    return FlexivRizon4RealEnv(
-        robot_sn=robot_sn,
-        control_mode=control_mode,
-        use_gripper=use_gripper,
-        gripper_type=gripper_type,
-        use_force=use_force,
-        use_joint_observation=use_joint_observation,
-        go_to_start=go_to_start,
-        log_level=log_level,
-        setup_robot=setup_robot,
-        gripper_mac_addr=gripper_mac_addr,
-        gripper_cam_size=gripper_cam_size,
-        gripper_rectify_size=gripper_rectify_size,
-        gripper_max_pos=gripper_max_pos,
-    )
