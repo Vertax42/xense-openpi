@@ -74,9 +74,18 @@ class BiFlexivRizon4RTEnvironment(_environment.Environment):
             # (H, W, C) -> (C, H, W) for OpenPI policy input
             processed_images[cam_name] = einops.rearrange(resized, "h w c -> c h w")
 
+        # Raw images (original resolution HWC) passed through for recording.
+        # Policy cameras only — tactile sensors excluded.
+        raw_images = {
+            cam: img
+            for cam, img in obs["images"].items()
+            if "_depth" not in cam and "tactile" not in cam
+        }
+
         return {
             "state": obs["qpos"],
             "images": processed_images,
+            "images_raw": raw_images,
         }
 
     @override

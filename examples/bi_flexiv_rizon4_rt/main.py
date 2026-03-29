@@ -17,6 +17,13 @@ Example usage:
     # Dry run (robot connected but actions not sent)
     python -m examples.bi_flexiv_rizon4_rt.main \\
         --host 192.168.2.100 --port 8000 --dry_run
+
+    # Inference + simultaneous recording in LeRobot format
+    python -m examples.bi_flexiv_rizon4_rt.main \\
+        --host 192.168.2.100 --port 8000 \\
+        --record \\
+        --record_repo_id Xense/my_new_dataset \\
+        --task "pack 6 cosmetic bottles into the carton"
 """
 
 import signal
@@ -27,6 +34,7 @@ import tyro
 from typing_extensions import override
 
 import examples.bi_flexiv_rizon4_rt.env as _env
+import examples.bi_flexiv_rizon4_rt.recorder as _recorder
 from lerobot.utils.robot_utils import get_logger
 from openpi_client import action_chunk_broker
 from openpi_client import rtc_action_chunk_broker
@@ -131,6 +139,12 @@ class Args:
     blend_steps: int = 3
     default_delay: int = 2
 
+    # Recording (LeRobot format, raw 640×480 images + absolute actions)
+    record: bool = False
+    record_repo_id: str = "Xense/recorded_dataset"
+    record_root: str | None = None  # local save path, defaults to ~/.cache/huggingface/lerobot
+    task: str = "pack 6 cosmetic bottles into the carton"
+
 
 def main(args: Args) -> None:
     ws_client_policy = _websocket_client_policy.WebsocketClientPolicy(
@@ -158,6 +172,19 @@ def main(args: Args) -> None:
     else:
         environment = base_environment
 
+    subscribers = []
+    if args.record:
+        if args.dry_run:
+            logger.warning("Recording is enabled in dry-run mode — state/action data will be from policy output only (no real robot motion)")
+        recorder = _recorder.make_recorder_subscriber(
+            repo_id=args.record_repo_id,
+            task=args.task,
+            fps=int(args.runtime_hz),
+            root=args.record_root,
+        )
+        subscribers.append(recorder)
+        logger.info(f"Recording enabled: repo_id={args.record_repo_id}, task='{args.task}'")
+
     if args.rtc_enabled:
         policy = rtc_action_chunk_broker.RTCActionChunkBroker(
             policy=ws_client_policy,
@@ -177,7 +204,7 @@ def main(args: Args) -> None:
     runtime = _runtime.Runtime(
         environment=environment,
         agent=_policy_agent.PolicyAgent(policy=policy),
-        subscribers=[],
+        subscribers=subscribers,
         max_hz=args.runtime_hz,
         num_episodes=args.num_episodes,
         max_episode_steps=args.max_episode_steps,
