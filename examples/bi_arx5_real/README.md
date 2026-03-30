@@ -51,6 +51,63 @@ python -m examples.bi_arx5_real.main \
     --use_multithreading=true
 ```
 
+## Synchronized Recording
+
+Record a new LeRobot-format dataset while running inference (raw 640×480 images,
+absolute joint actions — same format as the training data).
+
+```bash
+python -m examples.bi_arx5_real.main \
+    --left_arm_port=can1 \
+    --right_arm_port=can3 \
+    --record \
+    --record_repo_id Vertax42/my_new_dataset \
+    --task "pick and place cube"
+```
+
+The dataset is saved locally to `~/.cache/huggingface/lerobot/<repo_id>` by default.
+Use `--record_root /path/to/dir` to override the save location.
+
+---
+
+## Converting Recorded Dataset to MCAP
+
+[MCAP](https://mcap.dev/) files can be opened in [Foxglove Studio](https://foxglove.dev/)
+for visual inspection of observations, actions, and camera streams.
+
+> Run in the `lerobot-xense` environment where `lerobot2mcap` is installed.
+
+### Convert all episodes
+
+```bash
+mamba run -n lerobot-xense lerobot2mcap convert \
+    ~/.cache/huggingface/lerobot/Vertax42/my_new_dataset \
+    -o ~/mcap_output/my_new_dataset
+```
+
+### Convert specific episodes
+
+```bash
+mamba run -n lerobot-xense lerobot2mcap convert \
+    ~/.cache/huggingface/lerobot/Vertax42/my_new_dataset \
+    -o ~/mcap_output/my_new_dataset \
+    --episodes 0 1 2
+```
+
+### Parallel conversion (faster for large datasets)
+
+```bash
+mamba run -n lerobot-xense lerobot2mcap convert \
+    ~/.cache/huggingface/lerobot/Vertax42/my_new_dataset \
+    -o ~/mcap_output/my_new_dataset \
+    --jobs 4
+```
+
+Each episode produces a separate `.mcap` file under the output directory.
+Open any `.mcap` file directly in Foxglove Studio to inspect it.
+
+---
+
 ## Test the Environment
 
 Before running with real hardware, test the environment:

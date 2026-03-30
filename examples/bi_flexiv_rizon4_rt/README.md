@@ -1,0 +1,148 @@
+# BiFlexiv Rizon4 RT — Real Robot Inference
+
+Dual-arm Flexiv Rizon4 inference client using the OpenPI policy server.
+
+## Prerequisites
+
+- `lerobot-xense` conda environment with `lerobot2mcap` installed
+- Flexiv Rizon4 RT arms reachable over Ethernet
+- OpenPI policy server running (see below)
+
+## Usage
+
+### Terminal 1: Start OpenPI Policy Server
+
+```bash
+cd ~/openpi
+uv run scripts/serve_policy.py policy:checkpoint \
+    --policy.config=pi05_base_bi_flexiv_pack_6_cosmetic_bottles_lora \
+    --policy.dir=<checkpoint_dir>
+```
+
+### Terminal 2: Run Robot Client
+
+```bash
+cd ~/openpi
+mamba run -n lerobot-xense python -m examples.bi_flexiv_rizon4_rt.main \
+    --host 192.168.2.100 \
+    --port 8000
+```
+
+#### Common options
+
+| Flag | Default | Description |
+|---|---|---|
+| `--host` | `localhost` | Policy server host |
+| `--port` | `8000` | Policy server port |
+| `--bi_mount_type` | `forward` | Robot mount: `forward` or `side` |
+| `--stiffness_ratio` | `0.2` | Cartesian stiffness (0–1) |
+| `--control_frequency` | `100.0` | Inner control loop Hz |
+| `--runtime_hz` | `20.0` | Policy inference Hz |
+| `--action_horizon` | `50` | Steps per action chunk |
+| `--num_episodes` | `1` | Episodes to run |
+| `--max_episode_steps` | `100000` | Max steps per episode |
+| `--dry_run` | `False` | Print actions, do not execute |
+
+#### RTC (real-time correction) mode
+
+```bash
+mamba run -n lerobot-xense python -m examples.bi_flexiv_rizon4_rt.main \
+    --host 192.168.2.100 --port 8000 \
+    --rtc_enabled \
+    --action_queue_size_to_get_new_actions 40 \
+    --execution_horizon 50 \
+    --blend_steps 3
+```
+
+#### Dry run (no robot motion)
+
+```bash
+mamba run -n lerobot-xense python -m examples.bi_flexiv_rizon4_rt.main \
+    --host 192.168.2.100 --port 8000 \
+    --dry_run
+```
+
+---
+
+## Synchronized Recording
+
+Record a new LeRobot-format dataset while running inference (raw 640×480 images,
+absolute actions — same format as the training data).
+
+```bash
+mamba run -n lerobot-xense python -m examples.bi_flexiv_rizon4_rt.main \
+    --host 192.168.2.100 --port 8000 \
+    --record \
+    --record_repo_id Xense/my_new_dataset \
+    --task "pack 6 cosmetic bottles into the carton"
+```
+
+The dataset is saved locally to `~/.cache/huggingface/lerobot/<repo_id>` by default.
+Use `--record_root /path/to/dir` to override the save location.
+
+---
+
+## Converting Recorded Dataset to MCAP
+
+[MCAP](https://mcap.dev/) files can be opened in [Foxglove Studio](https://foxglove.dev/)
+for visual inspection of observations, actions, and camera streams.
+
+> Run in the `lerobot-xense` environment where `lerobot2mcap` is installed.
+
+### Convert all episodes
+
+```bash
+mamba run -n lerobot-xense lerobot2mcap convert \
+    ~/.cache/huggingface/lerobot/Xense/my_new_dataset \
+    -o ~/mcap_output/my_new_dataset
+```
+
+### Convert specific episodes
+
+```bash
+mamba run -n lerobot-xense lerobot2mcap convert \
+    ~/.cache/huggingface/lerobot/Xense/my_new_dataset \
+    -o ~/mcap_output/my_new_dataset \
+    --episodes 0 1 2
+```
+
+### Parallel conversion (faster for large datasets)
+
+```bash
+mamba run -n lerobot-xense lerobot2mcap convert \
+    ~/.cache/huggingface/lerobot/Xense/my_new_dataset \
+    -o ~/mcap_output/my_new_dataset \
+    --jobs 4
+```
+
+Each episode produces a separate `.mcap` file under the output directory.
+Open any `.mcap` file directly in Foxglove Studio to inspect it.
+
+---
+
+## Action / State Space
+
+20-dimensional Cartesian space:
+
+| Index | Key |
+|---|---|
+| 0–2 | `left_tcp.x/y/z` |
+| 3–8 | `left_tcp.r1–r6` (rotation) |
+| 9–11 | `right_tcp.x/y/z` |
+| 12–17 | `right_tcp.r1–r6` (rotation) |
+| 18 | `left_gripper.pos` |
+| 19 | `right_gripper.pos` |
+
+TCP positions are **delta** actions; gripper positions are **absolute**.
+
+---
+
+## File Structure
+
+```
+examples/bi_flexiv_rizon4_rt/
+├── main.py       # Entry point and CLI args
+├── env.py        # OpenPI Environment adapter (image resize, obs format)
+├── real_env.py   # BiFlexivRizon4RT robot control wrapper
+└── recorder.py   # LeRobot-format episode recorder subscriber
+```
