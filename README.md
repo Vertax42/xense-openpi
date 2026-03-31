@@ -559,6 +559,17 @@ python scripts/serve_policy.py \
     --policy.dir=checkpoints/pi05_base_xense_flare_pick_and_place_cube/xense_flare_pick_and_place_cube_20260115/39999
 ```
 
+#### BiFlexiv Platform Inference
+
+```bash
+# Pack 6 cosmetic bottles into the carton
+python scripts/serve_policy.py \
+    --default-prompt="pack 6 cosmetic bottles into the carton" \
+    policy:checkpoint \
+    --policy.config=pi05_base_bi_flexiv_pack_6_cosmetic_bottles_lora \
+    --policy.dir=checkpoints/pi05_base_bi_flexiv_pack_6_cosmetic_bottles_lora/bi_flexiv_pack_6_cosmetic_bottles_lora_20260329/19999
+```
+
 ### Utilities
 
 #### Checkpoint Transfer
@@ -573,6 +584,8 @@ scp -P 15443 -r root@connect.westd.seetacloud.com:/root/autodl-tmp/openpi/checkp
 ```bash
 # Test policy server connectivity
 nc -zv 192.168.2.215 8000
+nc -zv 192.168.110.68 8000
+Connection to 192.168.110.68 8000 port [tcp/*] succeeded!
 
 # Run BiARX5 client with tactile sensors
 python -m examples.bi_arx5_real.main \
