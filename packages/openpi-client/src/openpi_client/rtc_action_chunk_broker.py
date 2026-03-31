@@ -278,6 +278,36 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
         with self._latest_obs_lock:
             self._latest_obs = None
 
+    @override
+    def warmup(self, obs: Dict) -> None:
+        """Pre-warm JIT compilation before the episode control loop.
+
+        Must be called AFTER reset() (which clears warmup state) and BEFORE
+        the first infer() call. Blocks until both warmup phases complete so
+        the first real control step has zero JIT compilation delay.
+
+        On the first episode JAX compiles the computation graph (~400 ms per
+        phase); on subsequent episodes the cache is hot and both phases finish
+        in ~50 ms each.
+
+        Args:
+            obs: A real observation from the environment.
+        """
+        logger.info("Pre-episode warmup: starting JIT compilation...")
+        self._start_thread_if_needed()
+
+        # Feed the observation so the background thread can begin inference.
+        with self._latest_obs_lock:
+            self._latest_obs = obs
+
+        # Block until Phase 1 (JIT) + Phase 2 (prev_chunk shape) both finish.
+        if not self._first_inference_done.wait(timeout=120.0):
+            raise RuntimeError(
+                "RTCActionChunkBroker.warmup(): Timed out waiting for JIT "
+                "compilation. Is the policy server running?"
+            )
+        logger.info("Pre-episode warmup complete. First control step will have no JIT delay.")
+
     def stop(self):
         self._stop_event.set()
         if self._thread.is_alive():
