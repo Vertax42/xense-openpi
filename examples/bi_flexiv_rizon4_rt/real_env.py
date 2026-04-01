@@ -21,11 +21,6 @@ logger = get_logger("BiFlexivRizon4RTRealEnv")
 # Policy-facing camera names (must match BiFlexivInputs.EXPECTED_CAMERAS)
 _POLICY_CAMERAS = ("head", "left_wrist", "right_wrist")
 
-# Maximum allowed TCP displacement per control step (mm).
-# At 30 Hz, this caps single-step motion at ~600 mm/s — fast enough for
-# normal teleoperation but blocks runaway actions from bad policy outputs.
-_MAX_DELTA_XYZ_MM = 20.0
-
 
 class BiFlexivRizon4RTRealEnv:
     """Environment for BiFlexiv Rizon4 RT dual-arm robot.
@@ -59,12 +54,6 @@ class BiFlexivRizon4RTRealEnv:
             log_level=log_level,
         )
         self.robot = make_robot_from_config(self.config)
-
-        # Last commanded TCP xyz positions (mm) for displacement clamping.
-        # Populated on first step() from the live observation so we always
-        # clamp relative to where the robot actually is.
-        self._last_left_xyz: np.ndarray | None = None
-        self._last_right_xyz: np.ndarray | None = None
 
         if setup_robot:
             self.setup_robot()
@@ -114,19 +103,21 @@ class BiFlexivRizon4RTRealEnv:
 
     def reset(self, *, fake: bool = False) -> dm_env.TimeStep:
         """Reset both arms to start positions and wait for completion."""
-        # Clear displacement tracking so first step() re-seeds from live state.
-        self._last_left_xyz = None
-        self._last_right_xyz = None
-
         if not fake:
             logger.info("Resetting BiFlexiv Rizon4 RT to start positions...")
             try:
                 self.robot.reset_to_initial_position()
-                # Wait for the non-blocking RT trajectory to complete
-                timeout = 15.0
-                start = time.time()
+                # Block until the non-blocking RT trajectory actually finishes.
+                # Phase 1: wait for is_moving to become True (RT thread picks up request).
+                # Phase 2: wait for is_moving to become False (trajectory complete).
+                t0 = time.time()
+                while not self.robot.rt_moving:
+                    if time.time() - t0 > 1.0:
+                        logger.warning("RT trajectory never started, proceeding anyway")
+                        break
+                    time.sleep(0.001)
                 while self.robot.rt_moving:
-                    if time.time() - start > timeout:
+                    if time.time() - t0 > 15.0:
                         logger.warning("Reset trajectory timeout, proceeding anyway")
                         break
                     time.sleep(0.05)
@@ -147,74 +138,47 @@ class BiFlexivRizon4RTRealEnv:
 
         Args:
             action: [left_tcp(0-8), right_tcp(9-17), left_gripper(18), right_gripper(19)]
-
-        The xyz positions (mm) are clamped to ±_MAX_DELTA_XYZ_MM per step
-        relative to the previously commanded position to prevent runaway motion
-        from bad policy outputs.
         """
-        # ── Seed displacement tracking from live observation on first step ──
-        if self._last_left_xyz is None or self._last_right_xyz is None:
-            raw_obs = self.robot.get_observation()
-            self._last_left_xyz = np.array(
-                [raw_obs["left_tcp.x"], raw_obs["left_tcp.y"], raw_obs["left_tcp.z"]],
-                dtype=np.float64,
-            )
-            self._last_right_xyz = np.array(
-                [raw_obs["right_tcp.x"], raw_obs["right_tcp.y"], raw_obs["right_tcp.z"]],
-                dtype=np.float64,
-            )
-
-        # ── Clamp xyz displacement ──
-        def _clamp_xyz(target_xyz: np.ndarray, last_xyz: np.ndarray) -> np.ndarray:
-            delta = target_xyz - last_xyz
-            norm = np.linalg.norm(delta)
-            if norm > _MAX_DELTA_XYZ_MM:
-                delta = delta * (_MAX_DELTA_XYZ_MM / norm)
-                clamped = last_xyz + delta
-                logger.warning(
-                    f"TCP displacement clamped: requested {norm:.1f} mm → {_MAX_DELTA_XYZ_MM:.1f} mm"
-                )
-                return clamped
-            return target_xyz
-
-        left_xyz_raw = np.array([action[0], action[1], action[2]], dtype=np.float64)
-        right_xyz_raw = np.array([action[9], action[10], action[11]], dtype=np.float64)
-
-        left_xyz = _clamp_xyz(left_xyz_raw, self._last_left_xyz)
-        right_xyz = _clamp_xyz(right_xyz_raw, self._last_right_xyz)
+        import time as _time
 
         action_dict = {}
         # Left TCP (0-8)
-        action_dict["left_tcp.x"] = float(left_xyz[0])
-        action_dict["left_tcp.y"] = float(left_xyz[1])
-        action_dict["left_tcp.z"] = float(left_xyz[2])
+        action_dict["left_tcp.x"] = float(action[0])
+        action_dict["left_tcp.y"] = float(action[1])
+        action_dict["left_tcp.z"] = float(action[2])
         for i in range(6):
             action_dict[f"left_tcp.r{i + 1}"] = float(action[3 + i])
         # Right TCP (9-17)
-        action_dict["right_tcp.x"] = float(right_xyz[0])
-        action_dict["right_tcp.y"] = float(right_xyz[1])
-        action_dict["right_tcp.z"] = float(right_xyz[2])
+        action_dict["right_tcp.x"] = float(action[9])
+        action_dict["right_tcp.y"] = float(action[10])
+        action_dict["right_tcp.z"] = float(action[11])
         for i in range(6):
             action_dict[f"right_tcp.r{i + 1}"] = float(action[12 + i])
-        # Grippers (18, 19) — clamp to [0, 1]
+        # Grippers (18, 19)
         action_dict["left_gripper.pos"] = float(np.clip(action[18], 0.0, 1.0))
         action_dict["right_gripper.pos"] = float(np.clip(action[19], 0.0, 1.0))
 
-        # Update displacement tracking with actually commanded position
-        self._last_left_xyz = left_xyz
-        self._last_right_xyz = right_xyz
-
+        t0 = _time.time()
         try:
             self.robot.send_action(action_dict)
         except Exception as e:
             logger.error(f"Failed to send action: {e}")
             raise
+        t1 = _time.time()
+
+        obs = self.get_observation()
+        t2 = _time.time()
+
+        logger.debug(
+            f"step(): send_action={((t1-t0)*1000):.2f}ms | "
+            f"get_obs={((t2-t1)*1000):.2f}ms"
+        )
 
         return dm_env.TimeStep(
             step_type=dm_env.StepType.MID,
             reward=self.get_reward(),
             discount=None,
-            observation=self.get_observation(),
+            observation=obs,
         )
 
     def disconnect(self) -> None:
