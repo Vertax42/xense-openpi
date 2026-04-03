@@ -60,13 +60,13 @@ def test_pi05_training_time_rtc_model():
     loss = nnx_utils.module_jit(model.compute_loss)(key, obs, act)
     assert loss.shape == (batch_size, config.action_horizon)
 
-    prev_chunk_left_over = jnp.ones_like(act)
+    action_prefix = jnp.zeros_like(act)
     inference_delay = jnp.asarray([2, 4], dtype=jnp.int32)
     actions = nnx_utils.module_jit(model.training_time_rtc_sample_actions)(
         key,
         obs,
         num_steps=4,
-        prev_chunk_left_over=prev_chunk_left_over,
+        action_prefix=action_prefix,
         inference_delay=inference_delay,
     )
     assert actions.shape == (batch_size, model.action_horizon, model.action_dim)
