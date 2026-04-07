@@ -9,11 +9,43 @@ import numpy as np
 import tqdm
 import tyro
 
+import lerobot.datasets.lerobot_dataset as lerobot_dataset
 import openpi.models.model as _model
 import openpi.shared.normalize as normalize
 import openpi.training.config as _config
 import openpi.training.data_loader as _data_loader
 import openpi.transforms as transforms
+
+
+class _NoVideoLeRobotDataset(lerobot_dataset.LeRobotDataset):
+    """LeRobotDataset subclass that skips video decoding entirely.
+
+    Only state/action fields are needed for norm-stat computation, so
+    decoding video frames is pure overhead (and can trigger torchcodec
+    index-out-of-bounds errors on some datasets).
+    """
+
+    def __getitem__(self, idx) -> dict:
+        self._ensure_hf_dataset_loaded()
+        item = self.hf_dataset[idx]
+        ep_idx = item["episode_index"].item()
+
+        query_indices = None
+        if self.delta_indices is not None:
+            query_indices, padding = self._get_query_indices(idx, ep_idx)
+            query_result = self._query_hf_dataset(query_indices)
+            item = {**item, **padding}
+            for key, val in query_result.items():
+                item[key] = val
+
+        # Intentionally skip _query_videos — images are not needed for norm stats.
+
+        if self.image_transforms is not None:
+            pass  # no images to transform
+
+        task_idx = item["task_index"].item()
+        item["task"] = self.meta.tasks.iloc[task_idx].name
+        return item
 
 
 class RemoveStrings(transforms.DataTransformFn):
@@ -32,6 +64,22 @@ def _image_keys_from_repack(repack_inputs: list) -> list[str]:
                 if isinstance(images_struct, dict):
                     keys.extend(images_struct.keys())
     return keys
+
+
+class _RepackNoImages(transforms.DataTransformFn):
+    """RepackTransform variant that silently drops the 'images' sub-tree.
+
+    Used when skip_images=True: image keys are absent from the dataset item,
+    so we strip them from the repack structure before mapping.  FillDummyImages
+    runs afterwards to inject zero placeholders for downstream transforms.
+    """
+
+    def __init__(self, original: transforms.RepackTransform) -> None:
+        self._structure = {k: v for k, v in original.structure.items() if k != "images"}
+
+    def __call__(self, data: dict) -> dict:
+        flat_item = transforms.flatten_dict(data)
+        return {k: flat_item[v] if isinstance(v, str) else {ik: flat_item[iv] for ik, iv in v.items()} for k, v in self._structure.items()}
 
 
 class FillDummyImages(transforms.DataTransformFn):
@@ -69,18 +117,40 @@ def create_torch_dataloader(
 ) -> tuple[_data_loader.Dataset, int]:
     if data_config.repo_id is None:
         raise ValueError("Data config must have a repo_id")
-    dataset = _data_loader.create_torch_dataset(data_config, action_horizon, model_config, skip_images=skip_images)
+    if skip_images:
+        # Build a no-video dataset directly, bypassing create_torch_dataset so we
+        # don't need to add skip_images to data_loader.py.
+        repo_id = data_config.repo_id
+        if repo_id == "fake":
+            dataset = _data_loader.FakeDataset(model_config, num_samples=1024)
+        else:
+            dataset_meta = lerobot_dataset.LeRobotDatasetMetadata(repo_id)
+            dataset = _NoVideoLeRobotDataset(
+                repo_id,
+                delta_timestamps={
+                    key: [t / dataset_meta.fps for t in range(action_horizon)]
+                    for key in data_config.action_sequence_keys
+                },
+                tolerance_s=2e-4,
+            )
+            if data_config.prompt_from_task:
+                tasks_dict = _data_loader._convert_tasks_to_dict(dataset_meta.tasks)
+                dataset = _data_loader.TransformedDataset(
+                    dataset, [_data_loader._transforms.PromptFromLeRobotTask(tasks_dict)]
+                )
+    else:
+        dataset = _data_loader.create_torch_dataset(data_config, action_horizon, model_config)
 
     # When skip_images=True, video keys are absent from each sample.
     # Replace every RepackTransform with a lenient (strict=False) copy so that
     # missing image source-keys are silently dropped instead of raising KeyError.
     def _maybe_lenient(t):
-        if skip_images and isinstance(t, transforms.RepackTransform) and t.strict:
-            return transforms.RepackTransform(t.structure, strict=False)
+        if skip_images and isinstance(t, transforms.RepackTransform):
+            return _RepackNoImages(t)
         return t
 
     # When skip_images=True:
-    #   1. repack_transforms run with strict=False (missing image source-keys skipped)
+    #   1. _RepackNoImages strips the 'images' sub-tree so missing video keys don't crash
     #   2. FillDummyImages injects zero placeholders for the expected camera keys so
     #      that policy Input transforms (e.g. BiFlexivInputs) don't crash on KeyError
     #   3. ALL data_transforms run as normal – this includes DeltaActions which MUST

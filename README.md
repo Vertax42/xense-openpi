@@ -503,6 +503,11 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_bi_flexiv_p
 python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_assemble_box_with_phone_stand_test_lora
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_bi_flexiv_assemble_box_with_phone_stand_test_lora \
     --exp-name=bi_flexiv_assemble_box_with_phone_stand_test_lora_20260403 --overwrite
+
+# Assemble box with phone stand test real rtc
+python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0407_real_rtc
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0407_real_rtc \
+    --exp-name=bi_flexiv_assemble_box_with_phone_stand_lora_0407_real_rtc_20260407 --overwrite
 ```
 
 ### Deployment Commands
@@ -548,6 +553,13 @@ python scripts/serve_policy.py \
     policy:checkpoint \
     --policy.config=pi05_base_bi_flexiv_assemble_box_with_phone_stand_test_lora \
     --policy.dir=checkpoints/pi05_base_bi_flexiv_assemble_box_with_phone_stand_test_lora/bi_flexiv_assemble_box_with_phone_stand_test_lora_20260329/19999
+
+# Assemble box with phone stand test real rtc
+python scripts/serve_policy.py \
+    --default-prompt="Assemble the packaging by folding the flat box into shape, placing the metal phone stand inside, and closing the box properly." \
+    policy:checkpoint \
+    --policy.config=pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0407_real_rtc \
+    --policy.dir=checkpoints/pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0407_real_rtc/bi_flexiv_assemble_box_with_phone_stand_lora_0407_real_rtc_20260407/19999
 ```
 
 ### Utilities
