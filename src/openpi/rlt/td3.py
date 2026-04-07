@@ -3,7 +3,9 @@
 Implements Twin Delayed DDPG with paper-specific modifications:
 - Reference action regularization: beta * ||a - a_tilde||^2
 - Chunk-level discount: gamma^C for action chunk transitions
-- Reference action pass-through and dropout in actor
+- Within-chunk reward accumulation: Q̂ = Σ_{l'=1}^{C} γ^{l'-1} r_{l'} + γ^C E[Q']
+- next_ref_actions used to condition target actor on next-state VLA reference
+- UTD ratio: train_step() performs utd_ratio gradient updates per environment step
 """
 
 import copy
@@ -48,8 +50,15 @@ class TD3:
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=lr_critic)
 
         self._update_count = 0
-        # Chunk-level discount factor: gamma^C
-        self._chunk_discount = config.discount**actor.action_chunk
+        self._action_chunk = actor.action_chunk
+
+        # Chunk-level discount factor: gamma^C (paper Eq. 3)
+        self._chunk_discount = config.discount**self._action_chunk
+
+        # Per-step discount factors [1, C] for within-chunk reward accumulation
+        # γ^0, γ^1, ..., γ^{C-1}
+        step_exponents = torch.arange(self._action_chunk, dtype=torch.float32)
+        self._step_discounts = config.discount**step_exponents  # [C]
 
     @torch.no_grad()
     def _soft_update(self, target: torch.nn.Module, source: torch.nn.Module):
@@ -57,6 +66,20 @@ class TD3:
         tau = self.config.tau
         for tp, sp in zip(target.parameters(), source.parameters()):
             tp.data.mul_(1 - tau).add_(sp.data, alpha=tau)
+
+    def _compute_reward_sum(self, rewards: Tensor) -> Tensor:
+        """Compute within-chunk discounted reward sum.
+
+        Paper Eq. 3: Σ_{l'=1}^{C} γ^{l'-1} r_{l'}
+
+        Args:
+            rewards: [B, C] per-step rewards
+
+        Returns:
+            reward_sum: [B, 1] discounted sum
+        """
+        discounts = self._step_discounts.to(rewards.device).unsqueeze(0)  # [1, C]
+        return (discounts * rewards).sum(dim=1, keepdim=True)  # [B, 1]
 
     def update(self, replay_buffer: ReplayBuffer, batch_size: int) -> dict[str, float]:
         """Perform one TD3 update step.
@@ -75,15 +98,16 @@ class TD3:
         proprio = batch["proprio"]
         actions = batch["actions"]
         ref_actions = batch["ref_actions"]
-        rewards = batch["rewards"]
+        rewards = batch["rewards"]           # [B, C] per-step rewards
         next_z_rl = batch["next_z_rl"]
         next_proprio = batch["next_proprio"]
+        next_ref_actions = batch["next_ref_actions"]  # VLA reference at next state
         dones = batch["dones"]
 
         # --- Critic update ---
         with torch.no_grad():
-            # Target action with smoothing noise
-            next_actions, _ = self.actor_target(next_z_rl, next_proprio, ref_actions, apply_ref_dropout=False)
+            # Target actor conditioned on next-state VLA reference (paper Algorithm 1 line 15)
+            next_actions, _ = self.actor_target(next_z_rl, next_proprio, next_ref_actions, apply_ref_dropout=False)
             # Add clipped noise for target policy smoothing
             noise = torch.randn_like(next_actions) * self.config.policy_noise
             noise = noise.clamp(-self.config.noise_clip, self.config.noise_clip)
@@ -93,8 +117,11 @@ class TD3:
             target_q1, target_q2 = self.critic_target(next_z_rl, next_proprio, next_actions)
             target_q = torch.min(target_q1, target_q2)
 
-            # TD target with chunk-level discount
-            td_target = rewards + (1 - dones) * self._chunk_discount * target_q
+            # Within-chunk discounted reward sum: Σ_{l'=1}^{C} γ^{l'-1} r_{l'} (paper Eq. 3)
+            reward_sum = self._compute_reward_sum(rewards)
+
+            # TD target with chunk-level discount for the bootstrap term
+            td_target = reward_sum + (1 - dones) * self._chunk_discount * target_q
 
         # Current Q values
         q1, q2 = self.critic(z_rl, proprio, actions)
@@ -111,12 +138,12 @@ class TD3:
         # --- Actor update (delayed) ---
         self._update_count += 1
         if self._update_count % self.config.policy_delay == 0:
-            # Actor loss: -Q + beta * ||a - a_tilde||^2
+            # Actor loss: -Q + beta * ||a - a_tilde||^2  (paper Eq. 5)
             pred_actions, _ = self.actor(z_rl, proprio, ref_actions, apply_ref_dropout=True)
             q_value = self.critic.q1_forward(z_rl, proprio, pred_actions)
 
-            # Reference regularization
-            bc_loss = F.mse_loss(pred_actions, ref_actions)
+            # Reference regularization (sum over action dimensions, mean over batch)
+            bc_loss = ((pred_actions - ref_actions) ** 2).sum(dim=-1).sum(dim=-1).mean()
             actor_loss = -q_value.mean() + self.actor.beta * bc_loss
 
             self.actor_optimizer.zero_grad()
@@ -131,6 +158,24 @@ class TD3:
             self._soft_update(self.actor_target, self.actor)
             self._soft_update(self.critic_target, self.critic)
 
+        return metrics
+
+    def train_step(self, replay_buffer: ReplayBuffer, batch_size: int) -> dict[str, float]:
+        """Perform utd_ratio gradient updates per environment step.
+
+        Paper: "high update-to-data ratio of 5" — call this once per chunk
+        collected from the environment instead of calling update() directly.
+
+        Args:
+            replay_buffer: Replay buffer to sample from
+            batch_size: Batch size per update
+
+        Returns:
+            Metrics from the final update (representative of the step)
+        """
+        metrics = {}
+        for _ in range(self.config.utd_ratio):
+            metrics = self.update(replay_buffer, batch_size)
         return metrics
 
     def select_action(
