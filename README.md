@@ -26,13 +26,6 @@ This repository contains three types of models:
 
 For all models, we provide _base model_ checkpoints, pre-trained on 10k+ hours of robot data, and examples for using them out of the box or fine-tuning them to your own datasets.
 
-## Updates
-
-- [Sept 2025] We released PyTorch support in openpi.
-- [Sept 2025] We released pi05, an upgraded version of pi0 with better open-world generalization.
-- [Sept 2025]: We have added an [improved idle filter](examples/droid/README_train.md#data-filtering) for DROID training.
-- [Jun 2025]: We have added [instructions](examples/droid/README_train.md) for using `openpi` to train VLAs on the full [DROID dataset](https://droid-dataset.github.io/). This is an approximate open-source implementation of the training pipeline used to train pi0-FAST-DROID.
-
 ## Requirements
 
 **⚠️ IMPORTANT: This project requires NVIDIA GPU with CUDA support. CPU-only execution is not supported.**
@@ -53,16 +46,21 @@ For all models, we provide _base model_ checkpoints, pre-trained on 10k+ hours o
 
 ## Installation
 
-We use the `lerobot-xense` mamba environment as the base, then install openpi into it:
+We use the `lerobot-xense` mamba environment as the base, then install the client package followed by the main openpi package.
 
 ```bash
 # Clone with submodules
-git clone --recurse-submodules git@github.com:Vertax42/openpi.git
-# Or if you already cloned:
-git submodule update --init --recursive
+git clone git@github.com:Vertax42/openpi.git
 
-# Activate the base environment and install openpi
+# Activate the base environment
 mamba activate lerobot-xense
+
+# 1. Install the client package (xense-client, used by robot runtimes)
+cd packages/xense-client
+GIT_LFS_SKIP_SMUDGE=1 uv pip install -e .
+
+# 2. Install the main openpi package
+cd ../..
 GIT_LFS_SKIP_SMUDGE=1 uv pip install -e .
 ```
 
@@ -119,7 +117,7 @@ You can also test this out in the [example notebook](examples/inference.ipynb).
 
 We provide detailed step-by-step examples for running inference of our pre-trained checkpoints on [DROID](examples/droid/README.md) and [ALOHA](examples/aloha_real/README.md) robots.
 
-**Remote Inference**: We provide [examples and code](docs/remote_inference.md) for running inference of our models **remotely**: the model can run on a different server and stream actions to the robot via a websocket connection. This makes it easy to use more powerful GPUs off-robot and keep robot and policy environments separate.
+**Remote Inference**: The client package (`xense-client`) provides a websocket-based policy client so that model inference can run on a more powerful remote GPU server while the robot runtime streams observations and receives action chunks in real time. See `examples/simple_client/` for a minimal reference implementation.
 
 **Test inference without a robot**: We provide a [script](examples/simple_client/README.md) for testing inference without a robot. This script will generate a random observation and run inference with the model. See [here](examples/simple_client/README.md) for more details.
 
@@ -157,7 +155,7 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 uv run scripts/train.py pi05_base_arx5_lora -
 
 The command will log training progress to the console and save checkpoints to the `checkpoints` directory. You can also monitor training progress on the Weights & Biases dashboard. For maximally using the GPU memory, set `XLA_PYTHON_CLIENT_MEM_FRACTION=0.9` before running training -- this enables JAX to use up to 90% of the GPU memory (vs. the default of 75%).
 
-**Note:** We provide functionality for _reloading_ normalization statistics for state / action normalization from pre-training. This can be beneficial if you are fine-tuning to a new task on a robot that was part of our pre-training mixture. For more details on how to reload normalization statistics, see the [norm_stats.md](docs/norm_stats.md) file.
+**Note:** We provide functionality for _reloading_ normalization statistics for state / action normalization from pre-training. This can be beneficial if you are fine-tuning to a new task on a robot that was part of our pre-training mixture.
 
 ### 3. Spinning up a policy server and running inference
 
@@ -174,7 +172,7 @@ For more detailed examples of running inference on specific platforms, see:
 - [DROID README](examples/droid/README.md) for DROID platform
 - [BiARX5 README](examples/bi_arx5_real/README.md) for Xense platform
 
-If you want to embed a policy server call in your own robot runtime, we have a minimal example of how to do so in the [remote inference docs](docs/remote_inference.md).
+If you want to embed a policy server call in your own robot runtime, take a look at the `xense-client` package at `packages/xense-client/` and the minimal reference in `examples/simple_client/`.
 
 ### More Examples
 
@@ -328,280 +326,93 @@ This section contains production-ready commands for training and deploying model
 
 - **BiARX5**: Bi-manual ARX-5 robot setup with parallel grippers
 - **Xense Flare**: UMI-style dual-arm robot with data collection grippers
+- **BiFlexiv**: Dual-arm Flexiv Rizon4 real-time setup
 
-### Environment Setup for Training
+### Environment Variables (optional, for multi-GPU / offline datasets)
 
-````bash
-# Start a tmux session
-tmux new -s training
+```bash
+# Offline mode for locally-cached HuggingFace datasets
+export HF_HUB_OFFLINE=1
+export HF_DATASETS_OFFLINE=1
 
-# Configure offline mode for local datasets
-export HF_HUB_OFFLINE=1 && export HF_DATASETS_OFFLINE=1 && echo "Offline mode enabled"
-export HF_DATASETS_CACHE=/home/ubuntu/.cache/huggingface/datasets
-
-# Configure NCCL for multi-GPU training
+# NCCL settings for multi-GPU training on hosts without NVLink/IB
 export NCCL_P2P_DISABLE=1
 export NCCL_SHM_DISABLE=1
 export NCCL_IB_DISABLE=1
-export NCCL_NET_GDR_LEVEL=0
-export NCCL_TOPO_FILE=/dev/null
-export CUDA_VISIBLE_DEVICES=0,1,2,3
+```
 
-torchrun --nproc_per_node=1 scripts/train_pytorch.py pi05_base_arx5_full --exp-name=xense_bi_arx5_pick_and_place_cube_full --resume ; shutdown -h +5
+### Training Commands (latest per platform)
 
-torchrun --nproc_per_node=4 scripts/train_pytorch.py pi05_base_arx5_tie_shoes_full --exp-name=tie_shoes_full_100_episodes_torch --overwrite ; shutdown -h +5
+#### BiARX5 — training-time RTC
 
-python scripts/compute_norm_stats.py --config-name pi05_base_arx5_full
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train_pytorch.py pi05_base_arx5_full --exp-name=xense_bi_arx5_pick_and_place_cube --overwrite / --resume
+```bash
+python scripts/compute_norm_stats.py --config-name pi05_base_arx5_lora_training_time_rtc
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
+    pi05_base_arx5_lora_training_time_rtc \
+    --exp-name=training_time_rtc_20251209 --overwrite
+```
 
-# 20251021_XenseRobotics_TieShoes
-python scripts/compute_norm_stats.py --config-name pi05_base_arx5_tie_shoes_lora
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_arx5_tie_shoes_lora --exp-name=tie_shoes_lora_100_episodes --overwrite / --resume
+#### Xense Flare — open lock (training-time RTC)
 
-# 20251027_TieShoes_HighQuality_Lora
-python scripts/compute_norm_stats.py --config-name pi05_base_arx5_tie_shoes_high_quality_lora_1027
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_arx5_tie_shoes_high_quality_lora_1027 --exp-name=tie_shoes_lora_50_episodes --overwrite / --resume
-
-# 20251028_TieShoes_HighQuality_White_Lora
-python scripts/compute_norm_stats.py --config-name pi05_base_arx5_tie_shoes_high_quality_white_lora_1028
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_arx5_tie_shoes_high_quality_white_lora_1028 --exp-name=tie_shoes_white_lora_50_episodes --overwrite / --resume
-
-# 20251101_TIeShoes_25episodes_lora_no_adjust
-python scripts/compute_norm_stats.py --config-name tie_shoes_white_lora_finetune_1030_25_episodes
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py tie_shoes_white_lora_finetune_1030_25_episodes --exp-name=tie_shoes_25_episodes_lora_no_adjust_1101 --overwrite / --resume
-
-# 20251021_AutoDL_TieShoes
-jax[cuda13]
-orbax-checkpoint==0.11.20
-
-# 20251103 TieShoes_50episodes_lora_no_adjust
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py tie_shoes_50_episodes_lora_no_adjust_1101 --exp-name tie_shoes_50_episodes_lora_no_adjust_1103_40000 --overwrite
-
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py tie_shoes_50_episodes_lora_no_adjust_1101 --exp-name tie_shoes_50_episodes_lora_no_adjust_1103_40000 --resume
-
-python scripts/compute_norm_stats.py --config-name pi05_base_arx5_tie_shoes_full
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_arx5_tie_shoes_full --exp-name=tie_shoes_full_100_episodes_gpu_test --overwrite / --resume
-
-# test 20251111 lerobot040_test_bi_arx5
-python scripts/compute_norm_stats.py --config-name pi05_base_full_test
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_full_test --exp-name=pi05_base_full_test --overwrite / --resume
-
-# 20251204 pick and place chips train
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_arx5_lora_pick_and_place_chips --exp-name=pi05_base_arx5_lora_pick_and_place_chips_20251204 --overwrite
-
-# 20251209 training time rtc
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_arx5_lora_training_time_rtc --exp-name=training_time_rtc_20251209 --overwrite
-
-# 20260108 xense flare open lock
-python scripts/compute_norm_stats.py --config-name pi05_base_xense_flare_open_lock
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_xense_flare_open_lock --exp-name=xense_flare_open_lock_20260108 --overwrite / --resume
-
-# 20260113 xense flare wipe vase
-python scripts/compute_norm_stats.py --config-name pi05_base_xense_flare_wipe_vase
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_xense_flare_wipe_vase --exp-name=xense_flare_wipe_vase_20260113 --overwrite / --resume
-
-# 20260115 xense flare pick and place cube
-python scripts/compute_norm_stats.py --config-name pi05_base_xense_flare_pick_and_place_cube
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_xense_flare_pick_and_place_cube --exp-name=xense_flare_pick_and_place_cube_20260115 --overwrite / --resume
-
-# 20260202 tie shoes 50 episodes lora no adjust training time rtc
-python scripts/compute_norm_stats.py --config-name tie_shoes_50_episodes_lora_no_adjust_training_time_rtc_0202
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py tie_shoes_50_episodes_lora_no_adjust_training_time_rtc_0202 --exp-name=tie_shoes_50_episodes_lora_no_adjust_training_time_rtc_0202 --overwrite / --resume
-
-# 20260228 xense flare open lock training time rtc
+```bash
 python scripts/compute_norm_stats.py --config-name pi05_base_xense_flare_open_lock_rtc_0228
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_xense_flare_open_lock_rtc_0228 --exp-name=xense_flare_open_lock_rtc_0228 --overwrite / --resume
-
-# watch gpu temperature, power, fan speed, clocks, utilization
-watch -n 1 'sensors | grep -E "Package|Core (0|4|8|12|16)" && echo "---" && nvidia-smi --query-gpu=temperature.gpu,power.draw,fan.speed,clocks.gr,clocks.mem,utilization.gpu --format=csv'
-
-## inference time commands
-copy checkpoints from autodl server to local server
-```bash
-scp -P 15443 -r root@connect.westd.seetacloud.com:/root/autodl-tmp/openpi/checkpoints/pi05_base_arx5_tie_shoes_full/tie_shoes_full_100_episodes_torch/20000 .
-````
-
-```bash
-# pick and place
-python scripts/serve_policy.py --default-prompt="pick rgb cubes and place them into the blue box" policy:checkpoint --policy.config=pi05_base_arx5_lora --policy.dir=checkpoints/pi05_base_arx5_lora/xense_bi_arx5_pick_and_place_cube_arx5_assets/33000
-
-# tie shoes
-python scripts/serve_policy.py --default-prompt="tie shoelaces" policy:checkpoint --policy.config=pi05_base_arx5_tie_shoes_lora --policy.dir=checkpoints/pi05_base_arx5_tie_shoes_lora/tie_shoes_lora_50_episodes/33000
-
-python scripts/serve_policy.py policy:checkpoint --policy.config=tie_shoes_50_episodes_lora_no_adjust_1101 --policy.dir=checkpoints/tie_shoes_50_episodes_lora_no_adjust_1101/tie_shoes_50_episodes_lora_no_adjust_1103_40000/16000
-
-# pick and place chips
-python scripts/serve_policy.py --default-prompt="pick up a potato chip and place it into the chips container" policy:checkpoint --policy.config=pi05_base_arx5_lora_pick_and_place_chips --policy.dir=checkpoints/pi05_base_arx5_lora_pick_and_place_chips/pi05_base_arx5_lora_pick_and_place_chips_20251204/19999
-
-# training time RTC
-python scripts/serve_policy.py --default-prompt="pick rgb cubes and place them into the blue box" policy:checkpoint --policy.config=pi05_base_arx5_lora_training_time_rtc --policy.dir=checkpoints/pi05_base_arx5_lora_training_time_rtc/training_time_rtc_20251209/39999
-
-# open lock 20260108
-python scripts/serve_policy.py --default-prompt="open the lock with the key" policy:checkpoint --policy.config=pi05_base_xense_flare_open_lock --policy.dir=checkpoints/pi05_base_xense_flare_open_lock/xense_flare_open_lock_20260108/19999
-
-# wipe vase 20260115
-python scripts/serve_policy.py --default-prompt="wipe the vase" policy:checkpoint --policy.config=pi05_base_xense_flare_wipe_vase --policy.dir=checkpoints/pi05_base_xense_flare_wipe_vase/xense_flare_wipe_vase_20260113/19999
-
-# pick and place cube 20260115
-python scripts/serve_policy.py --default-prompt="pick up cubes in rgb order from the table and place them in the blue box" policy:checkpoint --policy.config=pi05_base_xense_flare_pick_and_place_cube --policy.dir=checkpoints/pi05_base_xense_flare_pick_and_place_cube/xense_flare_pick_and_place_cube_20260115/39999
-
-192.168.1.165:8000
-vertax@Jarvis:~$ nc -zv 192.168.2.215 8000
-Connection to 192.168.2.215 8000 port [tcp/*] succeeded!
-python -m examples.bi_arx5_real.main     --args.host 192.168.2.215     --args.port 8000     --args.dry_run  --args.enable_tactile_sensors
-
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
+    pi05_base_xense_flare_open_lock_rtc_0228 \
+    --exp-name=xense_flare_open_lock_rtc_0228 --overwrite
 ```
 
-### Training Commands
-
-#### BiARX5 Platform
+#### BiFlexiv — assemble box with phone stand
 
 ```bash
-# Pick and place (full fine-tuning)
-python scripts/compute_norm_stats.py --config-name pi05_base_arx5_full
-torchrun --nproc_per_node=1 scripts/train_pytorch.py pi05_base_arx5_full \
-    --exp-name=xense_bi_arx5_pick_and_place_cube_full --resume
-
-# Tie shoes (LoRA fine-tuning)
-python scripts/compute_norm_stats.py --config-name pi05_base_arx5_tie_shoes_lora
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_arx5_tie_shoes_lora \
-    --exp-name=tie_shoes_lora_100_episodes --overwrite
-
-# Pick and place chips
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_arx5_lora_pick_and_place_chips \
-    --exp-name=pi05_base_arx5_lora_pick_and_place_chips_20251204 --overwrite
-```
-
-#### Xense Flare Platform (UMI-style grippers)
-
-```bash
-# Open lock task
-python scripts/compute_norm_stats.py --config-name pi05_base_xense_flare_open_lock
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_xense_flare_open_lock \
-    --exp-name=xense_flare_open_lock_20260108 --overwrite
-
-# Wipe vase task
-python scripts/compute_norm_stats.py --config-name pi05_base_xense_flare_wipe_vase
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_xense_flare_wipe_vase \
-    --exp-name=xense_flare_wipe_vase_20260113 --overwrite
-
-# Pick and place cube task
-python scripts/compute_norm_stats.py --config-name pi05_base_xense_flare_pick_and_place_cube
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_xense_flare_pick_and_place_cube \
-    --exp-name=xense_flare_pick_and_place_cube_20260115 --overwrite
-```
-
-### BiFlexiv Platform
-
-```bash
-# Pack 6 cosmetic bottles into the carton
-python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_pack_6_cosmetic_bottles_lora
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_bi_flexiv_pack_6_cosmetic_bottles_lora \
-    --exp-name=bi_flexiv_pack_6_cosmetic_bottles_lora_20260329 --overwrite
-
-# Assemble box with phone stand test
 python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0403
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0403 \
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
+    pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0403 \
     --exp-name=bi_flexiv_assemble_box_with_phone_stand_lora_20260403 --overwrite
 ```
 
-### Deployment Commands
+### Deployment Commands (latest per platform)
 
-#### BiARX5 Platform Inference
+#### BiARX5 — training-time RTC inference
 
 ```bash
-# Pick and place RGB cubes
 python scripts/serve_policy.py \
     --default-prompt="pick rgb cubes and place them into the blue box" \
     policy:checkpoint \
-    --policy.config=pi05_base_arx5_lora \
-    --policy.dir=checkpoints/pi05_base_arx5_lora/xense_bi_arx5_pick_and_place_cube_arx5_assets/33000
-
-# Tie shoelaces
-python scripts/serve_policy.py \
-    --default-prompt="tie shoelaces" \
-    policy:checkpoint \
-    --policy.config=pi05_base_arx5_tie_shoes_lora \
-    --policy.dir=checkpoints/pi05_base_arx5_tie_shoes_lora/tie_shoes_lora_50_episodes/33000
-
-# Pick and place chips
-python scripts/serve_policy.py \
-    --default-prompt="pick up a potato chip and place it into the chips container" \
-    policy:checkpoint \
-    --policy.config=pi05_base_arx5_lora_pick_and_place_chips \
-    --policy.dir=checkpoints/pi05_base_arx5_lora_pick_and_place_chips/pi05_base_arx5_lora_pick_and_place_chips_20251204/19999
+    --policy.config=pi05_base_arx5_lora_training_time_rtc \
+    --policy.dir=checkpoints/pi05_base_arx5_lora_training_time_rtc/training_time_rtc_20251209/39999
 ```
 
-#### Xense Flare Platform Inference
+#### Xense Flare — open lock inference
 
 ```bash
-# Open lock with key
 python scripts/serve_policy.py \
     --default-prompt="open the lock with the key" \
     policy:checkpoint \
-    --policy.config=pi05_base_xense_flare_open_lock \
-    --policy.dir=checkpoints/pi05_base_xense_flare_open_lock/xense_flare_open_lock_20260108/19999
-
-# Wipe vase
-python scripts/serve_policy.py \
-    --default-prompt="wipe the vase" \
-    policy:checkpoint \
-    --policy.config=pi05_base_xense_flare_wipe_vase \
-    --policy.dir=checkpoints/pi05_base_xense_flare_wipe_vase/xense_flare_wipe_vase_20260113/19999
-
-# Pick and place cube (RGB order)
-python scripts/serve_policy.py \
-    --default-prompt="pick up cubes in rgb order from the table and place them in the blue box" \
-    policy:checkpoint \
-    --policy.config=pi05_base_xense_flare_pick_and_place_cube \
-    --policy.dir=checkpoints/pi05_base_xense_flare_pick_and_place_cube/xense_flare_pick_and_place_cube_20260115/39999
+    --policy.config=pi05_base_xense_flare_open_lock_rtc_0228 \
+    --policy.dir=checkpoints/pi05_base_xense_flare_open_lock_rtc_0228/xense_flare_open_lock_rtc_0228/19999
 ```
 
-#### BiFlexiv Platform Inference
+#### BiFlexiv — assemble box inference
 
 ```bash
-# Pack 6 cosmetic bottles into the carton
-python scripts/serve_policy.py \
-    --default-prompt="pack 6 cosmetic bottles into the carton" \
-    policy:checkpoint \
-    --policy.config=pi05_base_bi_flexiv_pack_6_cosmetic_bottles_lora \
-    --policy.dir=checkpoints/pi05_base_bi_flexiv_pack_6_cosmetic_bottles_lora/bi_flexiv_pack_6_cosmetic_bottles_lora_20260329/19999
-
-# Assemble box with phone stand test
 python scripts/serve_policy.py \
     --default-prompt="assemble the box with the phone stand" \
     policy:checkpoint \
-    --policy.config=pi05_base_bi_flexiv_assemble_box_with_phone_stand_test_lora \
-    --policy.dir=checkpoints/pi05_base_bi_flexiv_assemble_box_with_phone_stand_test_lora/bi_flexiv_assemble_box_with_phone_stand_test_lora_20260329/19999
+    --policy.config=pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0403 \
+    --policy.dir=checkpoints/pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0403/bi_flexiv_assemble_box_with_phone_stand_lora_20260403/19999
 ```
 
-### Utilities
-
-#### Checkpoint Transfer
+### Running the robot client
 
 ```bash
-# Copy checkpoints from remote server to local
-scp -P 15443 -r root@connect.westd.seetacloud.com:/root/autodl-tmp/openpi/checkpoints/pi05_base_arx5_tie_shoes_full/tie_shoes_full_100_episodes_torch/20000 .
-```
-
-#### Network Testing
-
-```bash
-# Test policy server connectivity
-nc -zv 192.168.2.215 8000
-nc -zv 192.168.142.158 8000
-Connection to 192.168.142.158 8000 port [tcp/*] succeeded!
-
-# Run BiARX5 client with tactile sensors
+# BiARX5 with tactile sensors
 python -m examples.bi_arx5_real.main \
     --args.host 192.168.2.215 \
     --args.port 8000 \
     --args.dry_run \
     --args.enable_tactile_sensors
-```
 
-```bash
-# Run BiFlexiv client
+# BiFlexiv RT with RTC enabled
 python -m examples.bi_flexiv_rizon4_rt.main \
     --args.host 192.168.142.158 \
     --args.port 8000 \
@@ -609,7 +420,6 @@ python -m examples.bi_flexiv_rizon4_rt.main \
     --args.inner-control-hz 1000 \
     --args.interpolate-cmds \
     --args.runtime-hz 30 \
-    --args.log-level INFO \
     --args.rtc-enabled \
     --args.dry-run
 ```
