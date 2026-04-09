@@ -9,8 +9,8 @@ import signal
 import time
 from moviepy.editor import ImageSequenceClip
 import numpy as np
-from openpi_client import image_tools
-from openpi_client import websocket_client_policy
+from xense_client import image_tools
+from xense_client import websocket_client_policy
 import pandas as pd
 from PIL import Image
 from droid.robot_env import RobotEnv

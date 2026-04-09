@@ -4,9 +4,9 @@ from typing import Dict, Optional, Tuple
 from typing_extensions import override
 import websockets.sync.client
 
-from openpi_client import base_policy as _base_policy
-from openpi_client import msgpack_numpy
-from openpi_client.logger import get_logger
+from xense_client import base_policy as _base_policy
+from xense_client import msgpack_numpy
+from xense_client.logger import get_logger
 
 logger = get_logger("WebsocketClientPolicy")
 

@@ -3,8 +3,8 @@
 import einops
 from lerobot.utils.robot_utils import get_logger
 import numpy as np
-from openpi_client import image_tools
-from openpi_client.runtime import environment as _environment
+from xense_client import image_tools
+from xense_client.runtime import environment as _environment
 from typing_extensions import override
 
 import examples.bi_flexiv_rizon4_rt.real_env as _real_env

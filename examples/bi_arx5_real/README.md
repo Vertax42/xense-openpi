@@ -40,7 +40,7 @@ cd /home/ubuntu/openpi
 
 # Install minimal dependencies (if needed)
 pip install -r examples/bi_arx5_real/requirements.txt
-pip install -e packages/openpi-client
+pip install -e packages/xense-client
 
 # Run the robot client
 python -m examples.bi_arx5_real.main \

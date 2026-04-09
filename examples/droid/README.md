@@ -32,7 +32,7 @@ uv run scripts/serve_policy.py --env=DROID
 
 1. Make sure you have the most recent version of the DROID package installed on both the DROID control laptop and the NUC.
 2. On the control laptop, activate your DROID conda environment.
-3. Clone the openpi repo and install the openpi client, which we will use to connect to the policy server (this has very few dependencies and should be very fast to install): with the DROID conda environment activated, run `cd $OPENPI_ROOT/packages/openpi-client && pip install -e .`.
+3. Clone the openpi repo and install the xense client, which we will use to connect to the policy server (this has very few dependencies and should be very fast to install): with the DROID conda environment activated, run `cd $OPENPI_ROOT/packages/xense-client && pip install -e .`.
 4. Install `tyro`, which we will use for command line parsing: `pip install tyro`.
 5. Copy the `main.py` file from this directory to the `$DROID_ROOT/scripts` directory.
 6. Replace the camera IDs in the `main.py` file with the IDs of your cameras (you can find the camera IDs by running `ZED_Explorer` in the command line, which will open a tool that shows you all connected cameras and their IDs -- you can also use it to make sure that the cameras are well-positioned to see the scene you want the robot to interact with).

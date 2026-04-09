@@ -1,12 +1,12 @@
 import dataclasses
 
 from lerobot.utils.robot_utils import get_logger
-from openpi_client import action_chunk_broker
-from openpi_client import rtc_action_chunk_broker
-from openpi_client import websocket_client_policy as _websocket_client_policy
-from openpi_client.runtime import environment as _environment
-from openpi_client.runtime import runtime as _runtime
-from openpi_client.runtime.agents import policy_agent as _policy_agent
+from xense_client import action_chunk_broker
+from xense_client import rtc_action_chunk_broker
+from xense_client import websocket_client_policy as _websocket_client_policy
+from xense_client.runtime import environment as _environment
+from xense_client.runtime import runtime as _runtime
+from xense_client.runtime.agents import policy_agent as _policy_agent
 from typing_extensions import override
 import tyro
 

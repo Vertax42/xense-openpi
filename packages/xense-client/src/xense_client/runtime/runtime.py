@@ -1,10 +1,10 @@
 import threading
 import time
 
-from openpi_client.logger import get_logger
-from openpi_client.runtime import agent as _agent
-from openpi_client.runtime import environment as _environment
-from openpi_client.runtime import subscriber as _subscriber
+from xense_client.logger import get_logger
+from xense_client.runtime import agent as _agent
+from xense_client.runtime import environment as _environment
+from xense_client.runtime import subscriber as _subscriber
 
 logger = get_logger("Runtime")
 

@@ -19,7 +19,7 @@ import pathlib
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 from lerobot.utils.robot_utils import get_logger
 import numpy as np
-from openpi_client.runtime import subscriber as _subscriber
+from xense_client.runtime import subscriber as _subscriber
 from typing_extensions import override
 
 logger = get_logger("BiFlexivRecorder")

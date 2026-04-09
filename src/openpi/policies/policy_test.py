@@ -1,4 +1,4 @@
-from openpi_client import action_chunk_broker
+from xense_client import action_chunk_broker
 import pytest
 
 from openpi.policies import droid_policy
