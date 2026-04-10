@@ -75,7 +75,7 @@ def create_parquet_dataloader(
         set or the last batch is partial.
     """
     import pyarrow.dataset as pad
-    from lerobot.datasets.lerobot_dataset import LeRobotDatasetMetadata
+    from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
     repo_id = data_config.repo_id
     if repo_id is None:
@@ -93,8 +93,10 @@ def create_parquet_dataloader(
     logger.info("Parquet columns: state=%r, action=%r", state_col, action_col)
 
     # --- load parquet -----------------------------------------------------------
-    meta = LeRobotDatasetMetadata(repo_id)
-    data_dir = meta.root / "data"
+    # Download the full LeRobot repo locally, but keep the fast path below on raw
+    # parquet reads so stats computation never decodes video frames.
+    dataset = LeRobotDataset(repo_id, download_videos=True)
+    data_dir = dataset.root / "data"
     ds = pad.dataset(str(data_dir), format="parquet")
 
     cols = ["episode_index", "frame_index", state_col, action_col]

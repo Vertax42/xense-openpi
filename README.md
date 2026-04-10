@@ -368,6 +368,8 @@ python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_assemble_
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
     pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0403 \
     --exp-name=bi_flexiv_assemble_box_with_phone_stand_lora_20260403 --overwrite
+
+python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0410
 ```
 
 ### Deployment Commands (latest per platform)
