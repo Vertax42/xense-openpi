@@ -529,8 +529,14 @@ def convert_pi0_checkpoint(
     # Save the converted model using safetensors
     os.makedirs(output_path, exist_ok=True)
 
-    # Save model weights as SafeTensors using save_model to handle tied weights
-    safetensors.torch.save_model(pi0_model, os.path.join(output_path, "model.safetensors"))
+    # Save model weights as SafeTensors without the tied-weight deduplication
+    # ``save_model`` applies. ``paligemma.lm_head.weight`` and
+    # ``language_model.embed_tokens.weight`` share memory by default; we clone
+    # the view so both keys land in the file as independent tensors, letting
+    # downstream loaders do ``model.load_state_dict(sd, strict=True)`` without
+    # first having to remember ``paligemma.tie_weights()``.
+    save_sd = {k: v.detach().clone().contiguous() for k, v in pi0_model.state_dict().items()}
+    safetensors.torch.save_file(save_sd, os.path.join(output_path, "model.safetensors"))
 
     # Copy assets folder if it exists
     assets_source = pathlib.Path(checkpoint_dir).parent / "assets"
