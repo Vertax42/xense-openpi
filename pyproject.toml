@@ -3,7 +3,7 @@ name = "openpi"
 version = "0.1.0"
 description = "Physical Intelligence open source repo"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = { file = "LICENSE" }
 dependencies = [
     "augmax>=0.3.4",
@@ -34,7 +34,7 @@ dependencies = [
     "filelock>=3.16.1",
     "beartype==0.19.0",
     "treescope>=0.1.7",
-    "transformers==4.53.2",
+    "transformers==5.3.0",
     "rich>=14.0.0",
     "polars>=1.30.0",
     "chex",
@@ -56,10 +56,14 @@ dev = [
     "matplotlib>=3.10.0",
     "pynvml>=12.0.0",
 ]
-rlds = ["dlimp", "tensorflow-cpu==2.15.0", "tensorflow-datasets==4.9.9"]
+rlds = ["dlimp", "tensorflow-cpu>=2.19.0", "tensorflow-datasets>=4.9.9"]
 
 [tool.uv]
-override-dependencies = ["ml-dtypes==0.4.1", "tensorstore==0.1.74"]
+override-dependencies = [
+    "ml-dtypes==0.4.1",
+    "tensorstore==0.1.74",
+    "tensorflow>=2.19.0",
+]
 
 [[tool.uv.index]]
 name = "pytorch-cu128"
@@ -77,11 +81,10 @@ members = ["packages/*"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py310"
+target-version = "py312"
 extend-exclude = [
     "docker",
     "third_party",
-    "src/openpi/models_pytorch/transformers_replace/*",
 ]
 
 [tool.ruff.lint]
