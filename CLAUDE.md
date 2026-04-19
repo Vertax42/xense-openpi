@@ -34,10 +34,10 @@ GIT_LFS_SKIP_SMUDGE=1 uv pip install -e .
 ```
 
 ### PyTorch Setup (if using PyTorch models)
-```bash
-# Apply transformers patches (required for PyTorch)
-cp -r ./src/openpi/models_pytorch/transformers_replace/* .venv/lib/python3.11/site-packages/transformers/
-```
+No extra patching is required. As of `transformers==5.3.0`, Pi0-specific
+behaviour lives in `src/openpi/models_pytorch/transformers_compat/` as a set of
+small subclasses that are imported directly from `gemma_pytorch.py`. The old
+`transformers_replace/` + `cp` workflow has been removed.
 
 ### Linting and Formatting
 ```bash

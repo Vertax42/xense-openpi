@@ -190,17 +190,11 @@ openpi now provides PyTorch implementations of π₀ and π₀.₅ models alongs
 
 ### Setup
 
-1. Make sure transformers 4.53.2 is installed: `pip show transformers`
-
-2. Apply the transformers library patches (adjust the site-packages path for your Python version):
-   ```bash
-   # Find your site-packages path
-   python -c "import transformers; print(transformers.__file__)"
-   # Copy patches
-   cp -r ./src/openpi/models_pytorch/transformers_replace/* $(python -c "import transformers, os; print(os.path.dirname(transformers.__file__))")/
-   ```
-
-This overwrites several files in the transformers library with necessary model changes: 1) supporting AdaRMS, 2) correctly controlling the precision of activations, and 3) allowing the KV cache to be used without being updated.
+`uv sync` (or `pip install -e .`) is sufficient. openpi now pins
+`transformers==5.3.0`; Pi0-specific behaviour (AdaRMS, activation precision,
+read-only KV cache access) is provided by small subclasses in
+`src/openpi/models_pytorch/transformers_compat/` — no post-install `cp` step
+is required.
 
 ### Converting JAX Models to PyTorch
 
