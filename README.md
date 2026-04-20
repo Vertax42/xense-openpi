@@ -369,7 +369,10 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
     pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0403 \
     --exp-name=bi_flexiv_assemble_box_with_phone_stand_lora_20260403 --overwrite
 
-python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0410
+python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0410_merged_fixed
+WANDB_MODE=offline XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
+    pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0410_merged_fixed \
+    --exp-name=bi_flexiv_assemble_box_with_phone_stand_lora_0410_merged_fixed_20260413 --overwrite
 ```
 
 ### Deployment Commands (latest per platform)
@@ -402,6 +405,14 @@ python scripts/serve_policy.py \
     policy:checkpoint \
     --policy.config=pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0403 \
     --policy.dir=checkpoints/pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0403/bi_flexiv_assemble_box_with_phone_stand_lora_20260403/19999
+```
+
+```bash
+python scripts/serve_policy.py \
+    --default-prompt="assemble the box with the phone stand" \
+    policy:checkpoint \
+    --policy.config=pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0410_merged_fixed \
+    --policy.dir=checkpoints/pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0410_merged_fixed/bi_flexiv_assemble_box_with_phone_stand_lora_0410_merged_fixed_20260413/39000
 ```
 
 ### Running the robot client
