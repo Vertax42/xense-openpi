@@ -414,11 +414,22 @@ python -m examples.bi_arx5_real.main \
     --args.dry_run \
     --args.enable_tactile_sensors
 
-# BiFlexiv RT with RTC enabled
+# BiFlexiv RT side mount with RTC enabled
 python -m examples.bi_flexiv_rizon4_rt.main \
     --args.host 192.168.142.158 \
     --args.port 8000 \
     --args.bi-mount-type side \
+    --args.inner-control-hz 1000 \
+    --args.interpolate-cmds \
+    --args.runtime-hz 30 \
+    --args.rtc-enabled \
+    --args.dry-run
+
+# BiFlexiv RT forward mount with RTC enabled
+python -m examples.bi_flexiv_rizon4_rt.main \
+    --args.host 192.168.142.220 \
+    --args.port 8000 \
+    --args.bi-mount-type forward \
     --args.inner-control-hz 1000 \
     --args.interpolate-cmds \
     --args.runtime-hz 30 \
