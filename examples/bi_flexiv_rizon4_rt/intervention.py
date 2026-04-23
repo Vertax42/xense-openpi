@@ -8,14 +8,17 @@ from the current observation.
 The module exposes three collaborating pieces:
 
 * ``Pico4InterventionController`` — owns the BiPico4 teleop, decides whether
-  intervention is active on each tick, and keeps the teleop's internal target
-  pose synced to the real robot pose while the policy drives (without this the
-  first post-release frame would snap the arm to the teleop's stale target).
+  intervention is active on each tick, and (on the intervention rising edge)
+  syncs the teleop's internal target pose to the live robot TCP so the first
+  override frame does not snap the arm.
 * ``InterventionEnvironmentWrapper`` — Environment wrapper that polls the
-  controller in ``get_observation`` and swaps the action in ``apply_action``.
-* ``InterventionPolicyAgent`` — Agent wrapper that skips ``policy.infer`` while
-  intervention is active (saves a WebSocket round-trip) and calls
-  ``ActionChunkBroker.reset`` on the release edge.
+  controller in ``get_observation`` (so ``controller.active`` is fresh before
+  the agent runs) and owns teleop disconnect.
+* ``InterventionPolicyAgent`` — Agent wrapper that returns the teleop action
+  directly while intervention is active (skipping the policy server call) and
+  calls ``ActionChunkBroker.reset`` on the release edge.  Stamps every
+  returned action dict with ``is_intervention`` so subscribers (e.g. recorders)
+  see the same payload that is applied to the robot.
 """
 
 from __future__ import annotations
@@ -99,12 +102,12 @@ class Pico4InterventionController:
         """Refresh intervention state; return True if we should override policy.
 
         Called once per control step from the environment wrapper's
-        ``get_observation``.  When not intervening, resyncs the teleop's target
-        pose to the real robot pose so a later handoff starts from the same
-        point and does not jump.
+        ``get_observation``.  On the intervention rising edge (non-active →
+        active), resyncs the teleop's target pose to the live robot TCP so
+        the first override frame does not snap the arm.  ``reset_to_pose``
+        logs at INFO level, so doing it only on the edge (rather than every
+        non-intervention frame) keeps the log stream sane.
         """
-        left_pico = self._teleop._left_pico4
-        right_pico = self._teleop._right_pico4
         xrt = self._teleop._xrt
         if xrt is None:
             # Teleop not connected: treat as never intervening.
@@ -121,19 +124,19 @@ class Pico4InterventionController:
         enter_hi = cfg.grip_enable_threshold
         exit_lo = cfg.grip_disable_threshold
         if self._active:
-            still_active = left_grip > exit_lo and right_grip > exit_lo
-            new_active = still_active
+            new_active = left_grip > exit_lo and right_grip > exit_lo
         else:
             new_active = left_grip > enter_hi and right_grip > enter_hi
 
-        self._was_active = self._active
-        self._active = new_active
+        was_active = self._active
+        rising_edge = not was_active and new_active
 
-        if not self._active:
-            # Keep the teleop's internal target aligned with the real robot so
-            # the first override frame does not snap the arm. BiPico4 seeds its
-            # "reference" from _target_pos on the grip rising-edge, so we need
-            # _target_pos to track the current TCP here.
+        if rising_edge:
+            # Sync _target_pos/_quat to the live TCP *before* BiPico4.get_action
+            # is called for the first override frame. get_action sees _enabled
+            # rising → sets _ref_pos from the current controller position →
+            # delta = 0 on frame 1 → output ≈ _target_pos ≈ current TCP, so
+            # the handoff is continuous.
             try:
                 left_pose, right_pose = self._base_env._env.robot.get_current_tcp_pose_quat()
                 self._teleop.reset_to_pose(
@@ -143,13 +146,20 @@ class Pico4InterventionController:
                     float(right_pose[7]),
                 )
             except Exception as e:
-                # Non-fatal: if the read fails once, we try again next frame.
-                logger.debug(f"teleop pose resync skipped: {e}")
+                # Abort the engagement — otherwise the arm would follow a stale
+                # teleop target. Stay on policy; try again on the next rising edge.
+                logger.warning(f"Pico4 handoff aborted, could not read TCP pose: {e}")
+                self._was_active = was_active
+                self._active = False
+                return False
 
-        if self._was_active and not self._active:
+        self._was_active = was_active
+        self._active = new_active
+
+        if was_active and not new_active:
             self._pending_release = True
             logger.info("Intervention released (grip < disable threshold).")
-        elif not self._was_active and self._active:
+        elif rising_edge:
             logger.info(f"Intervention engaged — policy paused (grips L={left_grip:.2f} R={right_grip:.2f}).")
 
         return self._active
@@ -173,6 +183,20 @@ class Pico4InterventionController:
             dtype=np.float32,
         )
 
+    def reset_for_new_episode(self) -> None:
+        """Clear intervention state at episode boundary.
+
+        Ensures the next ``poll_and_decide`` treats a held grip as a fresh
+        rising edge, which forces ``reset_to_pose`` to resync the teleop's
+        target to wherever the robot landed after ``env.reset``.  Without
+        this, a user who keeps the grips held across an episode reset would
+        see the arm snap back to the pre-reset target pose on the first
+        post-reset tick.
+        """
+        self._active = False
+        self._was_active = False
+        self._pending_release = False
+
     def disconnect(self) -> None:
         try:
             self._teleop.disconnect()
@@ -181,9 +205,10 @@ class Pico4InterventionController:
 
 
 class InterventionEnvironmentWrapper(_environment.Environment):
-    """Wraps an Environment, swapping policy actions for teleop actions while
-    intervention is active.  Stamps ``is_intervention`` onto the action dict
-    for downstream subscribers (e.g. recorders) regardless of source.
+    """Wraps an Environment to poll the Pico4 controller before the agent
+    runs and to own teleop disconnect.  Action swapping happens in
+    ``InterventionPolicyAgent`` so runtime subscribers (e.g. recorders)
+    see the same action dict that is applied to the robot.
     """
 
     def __init__(
@@ -197,6 +222,11 @@ class InterventionEnvironmentWrapper(_environment.Environment):
     @override
     def reset(self) -> None:
         self._wrapped_env.reset()
+        # Force a rising edge on the first post-reset poll so the teleop
+        # target gets resynced to the robot's new home pose. Otherwise a
+        # user holding the grips across the reset would see the arm snap
+        # back to the pre-reset target.
+        self._controller.reset_for_new_episode()
 
     @override
     def is_episode_complete(self) -> bool:
@@ -204,17 +234,15 @@ class InterventionEnvironmentWrapper(_environment.Environment):
 
     @override
     def get_observation(self) -> dict:
+        # Poll grips before the agent runs so controller.active is fresh when
+        # InterventionPolicyAgent.get_action reads it on the next line of the
+        # runtime loop.
         self._controller.poll_and_decide()
         return self._wrapped_env.get_observation()
 
     @override
     def apply_action(self, action: dict) -> None:
-        if self._controller.active:
-            override_actions = self._controller.get_override_action()
-            merged: dict[str, Any] = {**action, "actions": override_actions, "is_intervention": True}
-        else:
-            merged = {**action, "is_intervention": False}
-        self._wrapped_env.apply_action(merged)
+        self._wrapped_env.apply_action(action)
 
     def disconnect(self) -> None:
         self._controller.disconnect()
@@ -224,8 +252,13 @@ class InterventionEnvironmentWrapper(_environment.Environment):
 
 
 class InterventionPolicyAgent(_agent.Agent):
-    """Wraps a PolicyAgent: skips inference while intervening, clears the
-    chunk broker on release so the next step triggers a fresh inference.
+    """Wraps a PolicyAgent: returns the teleop action (and skips the policy
+    server call) while intervention is active; clears the chunk broker on
+    the release edge so the next step triggers a fresh inference.
+
+    The returned dict always carries ``is_intervention`` so recorders and
+    other subscribers can distinguish human-commanded steps from policy
+    steps.
     """
 
     def __init__(
@@ -241,16 +274,20 @@ class InterventionPolicyAgent(_agent.Agent):
     @override
     def get_action(self, observation: dict) -> dict:
         if self._controller.active:
-            # Env wrapper will replace this with the teleop action; the
-            # zero vector is purely a placeholder that satisfies the action
-            # dict contract without hitting the inference server.
-            return {"actions": np.zeros(20, dtype=np.float32)}
+            return {
+                "actions": self._controller.get_override_action(),
+                "is_intervention": True,
+            }
 
         if self._controller.consume_release_event():
             logger.info("Clearing ActionChunkBroker cache (intervention released).")
             self._broker.reset()
 
-        return self._inner.get_action(observation)
+        action = self._inner.get_action(observation)
+        # Copy to avoid mutating a dict that may be cached internally by the
+        # chunk broker, and stamp the flag for downstream subscribers.
+        out: dict[str, Any] = {**action, "is_intervention": False}
+        return out
 
     @override
     def reset(self) -> None:
