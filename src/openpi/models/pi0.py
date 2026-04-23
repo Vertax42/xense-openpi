@@ -492,8 +492,8 @@ class Pi0(_model.BaseModel):
             )
             assert prefix_out is None
             v_t = self.action_out_proj(suffix_out[:, -self.action_horizon :])
-
-            return x_t + dt * v_t, time + dt
+            x_t = jnp.where(action_prefix_mask[:, :, None], action_prefix, x_t + dt * v_t)
+            return x_t, time + dt
 
         def cond(carry):
             x_t, time = carry
