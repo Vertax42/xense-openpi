@@ -177,7 +177,7 @@ class Args:
     rtc_enabled: bool = False
     action_queue_size_to_get_new_actions: int = 40
     execution_horizon: int = 50
-    blend_steps: int = 3
+    blend_steps: int = 0
     default_delay: int = 4
 
     # Recording (LeRobot format, raw 640x480 images + absolute actions)
