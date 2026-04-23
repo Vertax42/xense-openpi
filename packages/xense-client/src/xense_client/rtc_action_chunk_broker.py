@@ -133,6 +133,12 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
                     current_time = time.perf_counter()
                     action_index_before_inference = self._action_queue.get_action_index()
 
+                    # Snapshot of the prefix region we send to the model, used
+                    # after inference to verify the frozen-prefix invariant.
+                    # Populated only in normal operation (not during warmup).
+                    prefix_sent: Optional[np.ndarray] = None
+                    rebase_shift_mag: Optional[float] = None
+
                     # Determine prev_chunk_left_over and estimated_delay based on warmup state
                     if not self._warmup_done:
                         if self._warmup_prev_chunk is None:
@@ -221,6 +227,20 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
                                 shift = cur_state[..., :d] - self._prev_inference_state[..., :d]
                                 prev_chunk_left_over = prev_chunk_left_over.copy()
                                 prev_chunk_left_over[..., :d] -= shift
+                                rebase_shift_mag = float(np.max(np.abs(shift)))
+
+                        # Snapshot the prefix region we are about to send so we
+                        # can verify after inference whether the model actually
+                        # froze it byte-for-byte. This is the only reliable
+                        # frozen-prefix check: comparing against original_queue
+                        # in action_queue.merge() is meaningless when
+                        # delta_state_dim > 0 because the two sides live in
+                        # different reference frames (delta w.r.t. prev_state
+                        # vs delta w.r.t. cur_state).
+                        if prev_chunk_left_over is not None and estimated_delay_steps > 0:
+                            n_pref = min(estimated_delay_steps, len(prev_chunk_left_over))
+                            if n_pref > 0:
+                                prefix_sent = prev_chunk_left_over[:n_pref].copy()
 
                     # Remember the obs.state at which THIS inference is running
                     # so the next inference can compute the correct shift.
@@ -249,6 +269,33 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
 
                     if original_actions is None:
                         original_actions = processed_actions
+
+                    # Verify the frozen-prefix invariant: the model is expected
+                    # to copy prev_chunk_left_over[0:inference_delay] verbatim
+                    # into new_actions[0:inference_delay] (see pi0.py
+                    # training_time_rtc_sample_actions, action_prefix_mask).
+                    # If max_diff is not ~0, the model is NOT honoring the
+                    # frozen prefix and the merge-boundary jump we observe in
+                    # the robot IS caused inside the model (not by our merge
+                    # logic or our re-basing). The server-side inference time
+                    # log should be cross-checked against estimated_delay.
+                    if prefix_sent is not None:
+                        n_pref = len(prefix_sent)
+                        n_pref = min(n_pref, len(original_actions))
+                        if n_pref > 0:
+                            diff_pref = np.abs(original_actions[:n_pref] - prefix_sent[:n_pref])
+                            max_diff = float(np.max(diff_pref))
+                            mean_diff = float(np.mean(diff_pref))
+                            # per-dim max to identify which dimensions drift
+                            dim_max = np.max(diff_pref, axis=0)
+                            worst_dim = int(np.argmax(dim_max))
+                            logger.info(
+                                f"RTC Prefix Freeze Check: inference_delay={estimated_delay_steps}, "
+                                f"new[0:{n_pref}] vs sent_prev[0:{n_pref}] "
+                                f"max={max_diff:.4f} (dim {worst_dim}), mean={mean_diff:.4f}, "
+                                f"rebase_shift_max={rebase_shift_mag if rebase_shift_mag is not None else 'n/a'} "
+                                f"(should be ~0 if model froze prefix exactly)"
+                            )
 
                     # Handle warmup phases
                     if not self._warmup_done:
