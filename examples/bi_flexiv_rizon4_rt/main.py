@@ -24,23 +24,30 @@ Example usage:
         --record \\
         --record_repo_id Xense/my_new_dataset \\
         --task "pack 6 cosmetic bottles into the carton"
+
+    # Inference with Pico4 human intervention (both grips held → teleop takes over)
+    python -m examples.bi_flexiv_rizon4_rt.main \\
+        --host 192.168.2.100 --port 8000 --pico4_intervention
 """
 
 from dataclasses import dataclass
 import signal
 import sys
 
+from lerobot.teleoperators.bi_pico4 import BiPico4
+from lerobot.teleoperators.bi_pico4.config_bi_pico4 import BiPico4Config
 from lerobot.utils.robot_utils import get_logger
+from typing_extensions import override
+import tyro
 from xense_client import action_chunk_broker
 from xense_client import rtc_action_chunk_broker
 from xense_client import websocket_client_policy as _websocket_client_policy
 from xense_client.runtime import environment as _environment
 from xense_client.runtime import runtime as _runtime
 from xense_client.runtime.agents import policy_agent as _policy_agent
-from typing_extensions import override
-import tyro
 
 import examples.bi_flexiv_rizon4_rt.env as _env
+import examples.bi_flexiv_rizon4_rt.intervention as _intervention
 import examples.bi_flexiv_rizon4_rt.recorder as _recorder
 
 logger = get_logger("BiFlexivRizon4RTMain")
@@ -84,9 +91,9 @@ class DryRunEnvironmentWrapper(_environment.Environment):
         self._episode_count += 1
         self._step_count = 0
         self._last_rtc_inference_seq = -1
-        logger.info(f"\n{'='*80}")
+        logger.info(f"\n{'=' * 80}")
         logger.info(f"Episode {self._episode_count} - reset (dry run)")
-        logger.info(f"{'='*80}\n")
+        logger.info(f"{'=' * 80}\n")
         self._wrapped_env.reset()
 
     @override
@@ -102,12 +109,12 @@ class DryRunEnvironmentWrapper(_environment.Environment):
         self._step_count += 1
         actions = action.get("actions")
         if actions is not None:
-            logger.info(f"\n{'─'*80}")
+            logger.info(f"\n{'─' * 80}")
             logger.info(f"Step {self._step_count} - policy action (20D Cartesian):")
-            logger.info(f"{'─'*80}")
+            logger.info(f"{'─' * 80}")
             for i, (label, value) in enumerate(zip(_ACTION_LABELS, actions)):
                 logger.info(f"  [{i:2d}] {label:18s}: {value:+.6f}")
-            logger.info(f"{'─'*80}")
+            logger.info(f"{'─' * 80}")
             rtc = action.get("rtc_metrics")
             if rtc is not None:
                 seq = int(rtc.get("inference_seq", 0))
@@ -127,7 +134,7 @@ class DryRunEnvironmentWrapper(_environment.Environment):
                         f"infer RTT p95={rtc['latency_p95_ms']:.1f} ms"
                     )
             logger.info("DRY RUN: action NOT sent to robot")
-            logger.info(f"{'─'*80}\n")
+            logger.info(f"{'─' * 80}\n")
 
     def disconnect(self) -> None:
         self._wrapped_env.disconnect()
@@ -179,8 +186,23 @@ class Args:
     record_root: str | None = None  # local save path, defaults to ~/.cache/huggingface/lerobot
     task: str = "pack 6 cosmetic bottles into the carton"
 
+    # Pico4 human-in-the-loop intervention (hold both grips to take over)
+    pico4_intervention: bool = False
+    pico4_pos_sensitivity: float = 1.0
+    pico4_ori_sensitivity: float = 1.0
+
 
 def main(args: Args) -> None:
+    if args.pico4_intervention and args.rtc_enabled:
+        # RTCActionChunkBroker owns an execution queue + blending; its reset
+        # semantics differ from ActionChunkBroker. A correct RTC handoff needs
+        # a separate design pass — refuse the combo rather than silently doing
+        # the wrong thing.
+        raise SystemExit(
+            "--pico4_intervention is not supported with --rtc_enabled in this release. "
+            "Run without --rtc_enabled, or disable intervention."
+        )
+
     ws_client_policy = _websocket_client_policy.WebsocketClientPolicy(
         host=args.host,
         port=args.port,
@@ -239,9 +261,28 @@ def main(args: Args) -> None:
             action_horizon=args.action_horizon,
         )
 
+    intervention_controller: _intervention.Pico4InterventionController | None = None
+    if args.pico4_intervention:
+        teleop = BiPico4(
+            BiPico4Config(
+                pos_sensitivity=args.pico4_pos_sensitivity,
+                ori_sensitivity=args.pico4_ori_sensitivity,
+            )
+        )
+        intervention_controller = _intervention.Pico4InterventionController(teleop, base_environment)
+        intervention_controller.start()
+        environment = _intervention.InterventionEnvironmentWrapper(environment, intervention_controller)
+        agent = _intervention.InterventionPolicyAgent(
+            inner_agent=_policy_agent.PolicyAgent(policy=policy),
+            controller=intervention_controller,
+            broker=policy,
+        )
+    else:
+        agent = _policy_agent.PolicyAgent(policy=policy)
+
     runtime = _runtime.Runtime(
         environment=environment,
-        agent=_policy_agent.PolicyAgent(policy=policy),
+        agent=agent,
         subscribers=subscribers,
         max_hz=args.runtime_hz,
         num_episodes=args.num_episodes,
@@ -250,7 +291,16 @@ def main(args: Args) -> None:
 
     def safe_disconnect() -> None:
         try:
-            actual_env = environment._wrapped_env if isinstance(environment, DryRunEnvironmentWrapper) else environment
+            if intervention_controller is not None:
+                intervention_controller.disconnect()
+        except Exception as e:
+            logger.warning(f"Error disconnecting Pico4: {e}")
+        try:
+            actual_env = environment
+            if isinstance(actual_env, _intervention.InterventionEnvironmentWrapper):
+                actual_env = actual_env._wrapped_env
+            if isinstance(actual_env, DryRunEnvironmentWrapper):
+                actual_env = actual_env._wrapped_env
             actual_env.disconnect()
         except Exception as e:
             logger.warning(f"Error disconnecting: {e}")
