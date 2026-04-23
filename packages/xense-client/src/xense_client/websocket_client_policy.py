@@ -57,11 +57,6 @@ class WebsocketClientPolicy(_base_policy.BasePolicy):
             obs["__rtc_kwargs__"] = kwargs
 
         data = self._packer.pack(obs)
-        has_rtc = "__rtc_kwargs__" in obs
-        rtc_keys = list(obs["__rtc_kwargs__"].keys()) if has_rtc else None
-        logger.info(
-            f"send: obs_keys={list(obs.keys())} has_rtc={has_rtc} rtc_keys={rtc_keys} bytes={len(data)}"
-        )
         self._ws.send(data)
         response = self._ws.recv()
         if isinstance(response, str):

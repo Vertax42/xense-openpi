@@ -67,6 +67,7 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
         delay_margin: int = 2,  # Safety margin added to the estimated delay
         delay_history_size: int = 10,  # Number of recent delays tracked
         dry_run: bool = False,
+        delta_state_dim: int = 0,
     ):
         self._policy = policy
         self._frequency_hz = frequency_hz
@@ -75,6 +76,14 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
         self._execution_horizon = execution_horizon
         self._default_delay = default_delay
         self._delay_margin = max(0, int(delay_margin))
+        # Number of leading action dims that are deltas relative to the
+        # observation state at inference time (matches the training-side
+        # DeltaActions transform). When >0, prev_chunk_left_over is re-based
+        # from the prior inference's state to the current observation's state
+        # before being sent to the model. Leave at 0 for absolute-action
+        # policies. For BiFlexiv (18 delta + 2 absolute gripper dims), set 18.
+        self._delta_state_dim = int(delta_state_dim)
+        self._prev_inference_state: Optional[np.ndarray] = None
 
         self._action_queue = ActionQueue(rtc_enabled=rtc_enabled, blend_steps=blend_steps)
         self._latency_tracker = LatencyTracker()
@@ -187,6 +196,36 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
                             f"margin={self._delay_margin}), "
                             f"prev_chunk shape: {prev_chunk_left_over.shape if prev_chunk_left_over is not None else None}"
                         )
+
+                        # Re-base prev_chunk_left_over from the previous
+                        # inference's state into the current observation's
+                        # state. The model was trained with the RTC prefix as
+                        # deltas relative to the current obs.state; but the
+                        # raw chunk we buffered is deltas relative to the
+                        # obs.state at the time that chunk was inferred. When
+                        # the robot moves between inferences, the two frames
+                        # differ by (new_state - prev_state). Without this
+                        # correction the model sees a shifted prefix and
+                        # compensates in the postfix, causing a physical jump
+                        # at the merge boundary.
+                        if (
+                            self._delta_state_dim > 0
+                            and prev_chunk_left_over is not None
+                            and self._prev_inference_state is not None
+                            and isinstance(obs, dict)
+                            and "state" in obs
+                        ):
+                            cur_state = np.asarray(obs["state"])
+                            d = min(self._delta_state_dim, cur_state.shape[-1], prev_chunk_left_over.shape[-1])
+                            if d > 0:
+                                shift = cur_state[..., :d] - self._prev_inference_state[..., :d]
+                                prev_chunk_left_over = prev_chunk_left_over.copy()
+                                prev_chunk_left_over[..., :d] -= shift
+
+                    # Remember the obs.state at which THIS inference is running
+                    # so the next inference can compute the correct shift.
+                    if self._delta_state_dim > 0 and isinstance(obs, dict) and "state" in obs:
+                        self._prev_inference_state = np.asarray(obs["state"]).copy()
 
                     results = self._policy.infer(
                         obs,
@@ -373,6 +412,7 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
         # Reset warmup state for next episode
         self._warmup_done = False
         self._warmup_prev_chunk = None
+        self._prev_inference_state = None
         with self._latest_obs_lock:
             self._latest_obs = None
 
