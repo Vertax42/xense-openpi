@@ -76,14 +76,10 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
         self._execution_horizon = execution_horizon
         self._default_delay = default_delay
         self._delay_margin = max(0, int(delay_margin))
-        # Number of leading action dims that are deltas relative to the
-        # observation state at inference time (matches the training-side
-        # DeltaActions transform). When >0, prev_chunk_left_over is re-based
-        # from the prior inference's state to the current observation's state
-        # before being sent to the model. Leave at 0 for absolute-action
-        # policies. For BiFlexiv (18 delta + 2 absolute gripper dims), set 18.
+        # Retained for compatibility with existing call sites. RTC prefixes are
+        # now transformed on the policy server using the training input
+        # pipeline, so the client no longer attempts to re-base delta actions.
         self._delta_state_dim = int(delta_state_dim)
-        self._prev_inference_state: Optional[np.ndarray] = None
 
         self._action_queue = ActionQueue(rtc_enabled=rtc_enabled, blend_steps=blend_steps)
         self._latency_tracker = LatencyTracker()
@@ -137,7 +133,6 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
                     # after inference to verify the frozen-prefix invariant.
                     # Populated only in normal operation (not during warmup).
                     prefix_sent: Optional[np.ndarray] = None
-                    rebase_shift_mag: Optional[float] = None
 
                     # Determine prev_chunk_left_over and estimated_delay based on warmup state
                     if not self._warmup_done:
@@ -203,32 +198,6 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
                             f"prev_chunk shape: {prev_chunk_left_over.shape if prev_chunk_left_over is not None else None}"
                         )
 
-                        # Re-base prev_chunk_left_over from the previous
-                        # inference's state into the current observation's
-                        # state. The model was trained with the RTC prefix as
-                        # deltas relative to the current obs.state; but the
-                        # raw chunk we buffered is deltas relative to the
-                        # obs.state at the time that chunk was inferred. When
-                        # the robot moves between inferences, the two frames
-                        # differ by (new_state - prev_state). Without this
-                        # correction the model sees a shifted prefix and
-                        # compensates in the postfix, causing a physical jump
-                        # at the merge boundary.
-                        if (
-                            self._delta_state_dim > 0
-                            and prev_chunk_left_over is not None
-                            and self._prev_inference_state is not None
-                            and isinstance(obs, dict)
-                            and "state" in obs
-                        ):
-                            cur_state = np.asarray(obs["state"])
-                            d = min(self._delta_state_dim, cur_state.shape[-1], prev_chunk_left_over.shape[-1])
-                            if d > 0:
-                                shift = cur_state[..., :d] - self._prev_inference_state[..., :d]
-                                prev_chunk_left_over = prev_chunk_left_over.copy()
-                                prev_chunk_left_over[..., :d] -= shift
-                                rebase_shift_mag = float(np.max(np.abs(shift)))
-
                         # Snapshot the prefix region we are about to send so we
                         # can verify after inference whether the model actually
                         # froze it byte-for-byte. This is the only reliable
@@ -241,11 +210,6 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
                             n_pref = min(estimated_delay_steps, len(prev_chunk_left_over))
                             if n_pref > 0:
                                 prefix_sent = prev_chunk_left_over[:n_pref].copy()
-
-                    # Remember the obs.state at which THIS inference is running
-                    # so the next inference can compute the correct shift.
-                    if self._delta_state_dim > 0 and isinstance(obs, dict) and "state" in obs:
-                        self._prev_inference_state = np.asarray(obs["state"]).copy()
 
                     results = self._policy.infer(
                         obs,
@@ -261,29 +225,30 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
 
                     # Get actions
                     processed_actions = results.get("actions")
-                    original_actions = results.get("actions_original")
 
                     if processed_actions is None:
                         logger.error("Policy returned no 'actions' key")
                         continue
 
-                    if original_actions is None:
-                        original_actions = processed_actions
+                    # RTC guidance now uses the same action space that is
+                    # actually executed on the robot. The policy server
+                    # converts that absolute prefix back into the model's
+                    # training space using its normal input transforms before
+                    # sampling the next chunk. That avoids client-side
+                    # assumptions about delta masks, normalization, or state
+                    # ordering.
+                    queued_actions = processed_actions
 
-                    # Verify the frozen-prefix invariant: the model is expected
-                    # to copy prev_chunk_left_over[0:inference_delay] verbatim
-                    # into new_actions[0:inference_delay] (see pi0.py
-                    # training_time_rtc_sample_actions, action_prefix_mask).
-                    # If max_diff is not ~0, the model is NOT honoring the
-                    # frozen prefix and the merge-boundary jump we observe in
-                    # the robot IS caused inside the model (not by our merge
-                    # logic or our re-basing). The server-side inference time
-                    # log should be cross-checked against estimated_delay.
+                    # End-to-end frozen-prefix check in execution space. If the
+                    # policy server correctly transforms prev_chunk_left_over
+                    # into model space and the model freezes it, then after
+                    # output transforms the first `inference_delay` actions
+                    # should match the prefix we sent byte-for-byte.
                     if prefix_sent is not None:
                         n_pref = len(prefix_sent)
-                        n_pref = min(n_pref, len(original_actions))
+                        n_pref = min(n_pref, len(processed_actions))
                         if n_pref > 0:
-                            diff_pref = np.abs(original_actions[:n_pref] - prefix_sent[:n_pref])
+                            diff_pref = np.abs(processed_actions[:n_pref] - prefix_sent[:n_pref])
                             max_diff = float(np.max(diff_pref))
                             mean_diff = float(np.mean(diff_pref))
                             # per-dim max to identify which dimensions drift
@@ -293,19 +258,18 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
                                 f"RTC Prefix Freeze Check: inference_delay={estimated_delay_steps}, "
                                 f"new[0:{n_pref}] vs sent_prev[0:{n_pref}] "
                                 f"max={max_diff:.4f} (dim {worst_dim}), mean={mean_diff:.4f}, "
-                                f"rebase_shift_max={rebase_shift_mag if rebase_shift_mag is not None else 'n/a'} "
-                                f"(should be ~0 if model froze prefix exactly)"
+                                "(should be ~0 if model froze prefix exactly)"
                             )
 
                     # Handle warmup phases
                     if not self._warmup_done:
                         if self._warmup_prev_chunk is None:
                             # ===== WARMUP PHASE 1 COMPLETE =====
-                            # Save original_actions for next inference, do NOT execute
-                            self._warmup_prev_chunk = original_actions
+                            # Save queued_actions for next inference, do NOT execute
+                            self._warmup_prev_chunk = queued_actions
                             logger.info(
                                 f"✅ WARMUP Phase 1 complete. Latency: {latency * 1000:.0f}ms. "
-                                f"Saved {original_actions.shape} for Phase 2. Actions NOT executed."
+                                f"Saved {queued_actions.shape} for Phase 2. Actions NOT executed."
                             )
                             # Don't set _first_inference_done, continue to Phase 2
                             continue
@@ -336,7 +300,7 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
                     merge_start = time.perf_counter()
                     real_delay_before_merge = self._action_queue.get_action_index() - action_index_before_inference
                     self._action_queue.merge(
-                        new_original_actions=original_actions,
+                        new_original_actions=queued_actions,
                         new_processed_actions=processed_actions,
                         estimated_delay=estimated_delay_steps,
                         action_index_before_inference=action_index_before_inference,
@@ -459,7 +423,6 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
         # Reset warmup state for next episode
         self._warmup_done = False
         self._warmup_prev_chunk = None
-        self._prev_inference_state = None
         with self._latest_obs_lock:
             self._latest_obs = None
 
