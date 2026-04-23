@@ -84,7 +84,11 @@ class Policy(BasePolicy):
         # but without disturbing the real observation batch used for sampling.
         if "prev_chunk_left_over" in kwargs and kwargs["prev_chunk_left_over"] is not None:
             rtc_obs = jax.tree.map(lambda x: x, obs)
-            rtc_obs["actions"] = np.asarray(kwargs["prev_chunk_left_over"])
+            # Some websocket/msgpack paths return read-only NumPy views. The
+            # input transform stack may mutate `actions` in place
+            # (e.g. DeltaActions), so RTC prefixes must be copied to a
+            # writable array before reusing the training-time preprocessing.
+            rtc_obs["actions"] = np.array(kwargs["prev_chunk_left_over"], copy=True)
             rtc_inputs = self._input_transform(rtc_obs)
 
         if not self._is_pytorch_model:

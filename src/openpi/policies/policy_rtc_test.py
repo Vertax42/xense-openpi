@@ -62,6 +62,7 @@ def test_rtc_prev_chunk_left_over_uses_training_action_space():
         ],
         axis=0,
     )
+    prev_chunk_abs.setflags(write=False)
 
     policy.infer(obs, prev_chunk_left_over=prev_chunk_abs, inference_delay=2)
 
