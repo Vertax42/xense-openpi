@@ -254,6 +254,14 @@ def main(args: Args) -> None:
             blend_steps=args.blend_steps,
             default_delay=args.default_delay,
             dry_run=args.dry_run,
+            # Training used DeltaActions(mask=[True]*18 + [False]*2): the first
+            # 18 action dims (bi-arm TCP XYZ + 6D rot) are deltas relative to
+            # obs.state; the last 2 (grippers) are absolute. Telling the broker
+            # this lets it re-base prev_chunk_left_over from the previous
+            # inference's state into the current obs.state before sending, so
+            # the model sees a prefix consistent with its training distribution
+            # and the postfix joins smoothly at merge.
+            delta_state_dim=18,
         )
     else:
         policy = action_chunk_broker.ActionChunkBroker(
