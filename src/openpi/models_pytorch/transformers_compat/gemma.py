@@ -79,7 +79,12 @@ class PiGemmaRMSNorm(_mg.GemmaRMSNorm):
         if cond.shape[-1] != self.cond_dim:
             raise ValueError(f"Expected cond last-dim {self.cond_dim}, got {cond.shape[-1]}")
         modulation = self.dense(cond)
-        if x.dim() == 3:
+        # If cond is per-batch (b, cond_dim) but x is per-token (b, seq, dim),
+        # broadcast modulation across the sequence dim. When cond is already
+        # per-token (b, seq, cond_dim) — e.g. RTC training-time per-action
+        # timesteps — modulation is already (b, seq, dim*3) and broadcasts
+        # naturally.
+        if x.dim() == 3 and modulation.dim() == 2:
             modulation = modulation.unsqueeze(1)
         scale, shift, gate = torch.chunk(modulation, 3, dim=-1)
         out = normed * (1.0 + scale.to(torch.float32)) + shift.to(torch.float32)
