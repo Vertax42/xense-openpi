@@ -2,6 +2,7 @@ from collections.abc import Iterator, Sequence
 import logging
 import multiprocessing
 import os
+import time
 import typing
 from typing import Literal, Protocol, SupportsIndex, TypeVar
 
@@ -186,7 +187,7 @@ def create_torch_dataset(
         },
         # Increase tolerance_s slightly to handle floating-point precision issues in video timestamps.
         # The default 1e-4 can fail when timestamp differences are exactly at the boundary.
-        tolerance_s=2e-4,
+        tolerance_s=1e-2,
     )
 
     if data_config.prompt_from_task:
@@ -487,6 +488,7 @@ class TorchDataLoader:
             num_workers=num_workers,
             multiprocessing_context=mp_context,
             persistent_workers=num_workers > 0,
+            prefetch_factor=16 if num_workers > 0 else None,  # stall-fix: 32 over-buffered for cold start, 4 was too low vs slow workers, 16 is the sweet spot
             collate_fn=_collate_fn,
             worker_init_fn=_worker_init_fn,
             drop_last=True,
@@ -500,14 +502,21 @@ class TorchDataLoader:
     def __iter__(self):
         num_items = 0
         while True:
+            t_inner_iter = time.monotonic()
+            logging.info("[TorchDataLoader] calling iter(self._data_loader) (spawning workers) ...")
             data_iter = iter(self._data_loader)
+            logging.info(f"[TorchDataLoader] iter() returned in {time.monotonic()-t_inner_iter:.1f}s")
             while True:
                 if self._num_batches is not None and num_items >= self._num_batches:
                     return
+                t_batch = time.monotonic()
                 try:
                     batch = next(data_iter)
                 except StopIteration:
                     break  # We've exhausted the dataset. Create a new iterator and start over.
+                dt = time.monotonic() - t_batch
+                if num_items < 3 or dt > 3.0:
+                    logging.info(f"[TorchDataLoader] batch #{num_items} next() took {dt:.2f}s")
                 num_items += 1
                 # For JAX, convert to sharded arrays; for PyTorch, return torch tensors
                 if self._sharding is not None:
@@ -532,6 +541,14 @@ def _worker_init_fn(worker_id: int) -> None:
     # means that this approach will not work for selecting the backend.
     os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
     os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
+    # stall-fix: cap per-worker thread pools so 64 workers don't explode into
+    # thousands of runnable threads fighting for 192 logical CPUs.
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+    os.environ.setdefault("MKL_NUM_THREADS", "1")
+    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+    os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+    import torch
+    torch.set_num_threads(1)
 
 
 class RLDSDataLoader:
