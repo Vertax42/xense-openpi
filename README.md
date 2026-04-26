@@ -340,19 +340,10 @@ export NCCL_IB_DISABLE=1
 #### BiARX5 — training-time RTC
 
 ```bash
-python scripts/compute_norm_stats.py --config-name pi05_base_arx5_lora_training_time_rtc
+python scripts/compute_norm_stats.py --config-name tie_shoes_50_episodes_no_adjust_training_time_rtc_0426_h100
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
-    pi05_base_arx5_lora_training_time_rtc \
-    --exp-name=training_time_rtc_20251209 --overwrite
-```
-
-#### Xense Flare — open lock (training-time RTC)
-
-```bash
-python scripts/compute_norm_stats.py --config-name pi05_base_xense_flare_open_lock_rtc_0228
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
-    pi05_base_xense_flare_open_lock_rtc_0228 \
-    --exp-name=xense_flare_open_lock_rtc_0228 --overwrite
+    tie_shoes_50_episodes_no_adjust_training_time_rtc_0426_h100 \
+    --exp-name=tie_shoes_50_episodes_no_adjust_training_time_rtc_0426_h100 --overwrite
 ```
 
 #### BiFlexiv — assemble box with phone stand
@@ -363,7 +354,12 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
     pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0403 \
     --exp-name=bi_flexiv_assemble_box_with_phone_stand_lora_20260403 --overwrite
 
-python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0410
+python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0422_merged_fixed_h100
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
+    pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0422_merged_fixed_h100 \
+    --exp-name=pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0422_merged_fixed_h100_0422 --overwrite
+
+
 ```
 
 ### Deployment Commands (latest per platform)
@@ -398,6 +394,14 @@ python scripts/serve_policy.py \
     --policy.dir=checkpoints/pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0403/bi_flexiv_assemble_box_with_phone_stand_lora_20260403/19999
 ```
 
+```bash
+python scripts/serve_policy.py \
+    --default-prompt="assemble the box with the phone stand" \
+    policy:checkpoint \
+    --policy.config=pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0410_merged_fixed \
+    --policy.dir=checkpoints/pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0410_merged_fixed/bi_flexiv_assemble_box_with_phone_stand_lora_0410_merged_fixed_20260413/39000
+```
+
 ### Running the robot client
 
 ```bash
@@ -408,11 +412,22 @@ python -m examples.bi_arx5_real.main \
     --args.dry_run \
     --args.enable_tactile_sensors
 
-# BiFlexiv RT with RTC enabled
+# BiFlexiv RT side mount with RTC enabled
 python -m examples.bi_flexiv_rizon4_rt.main \
     --args.host 192.168.142.158 \
     --args.port 8000 \
     --args.bi-mount-type side \
+    --args.inner-control-hz 1000 \
+    --args.interpolate-cmds \
+    --args.runtime-hz 30 \
+    --args.rtc-enabled \
+    --args.dry-run
+
+# BiFlexiv RT forward mount with RTC enabled
+python -m examples.bi_flexiv_rizon4_rt.main \
+    --args.host 192.168.142.220 \
+    --args.port 8000 \
+    --args.bi-mount-type forward \
     --args.inner-control-hz 1000 \
     --args.interpolate-cmds \
     --args.runtime-hz 30 \

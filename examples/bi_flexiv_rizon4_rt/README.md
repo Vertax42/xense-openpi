@@ -73,6 +73,9 @@ mamba run -n lerobot-xense python -m examples.bi_flexiv_rizon4_rt.main \
 | `--num_episodes` | `1` | Episodes to run |
 | `--max_episode_steps` | `100000` | Max steps per episode |
 | `--dry_run` | `False` | Print actions, do not execute |
+| `--pico4_intervention` | `False` | Enable Pico4 VR human-in-the-loop intervention (see below) |
+| `--pico4_pos_sensitivity` | `1.0` | Position sensitivity passed to `BiPico4Config` when intervention is on |
+| `--pico4_ori_sensitivity` | `1.0` | Orientation sensitivity passed to `BiPico4Config` when intervention is on |
 
 #### RTC (real-time correction) mode
 
@@ -92,6 +95,49 @@ mamba run -n lerobot-xense python -m examples.bi_flexiv_rizon4_rt.main \
     --host 10.142.1.1 --port 8000 \
     --dry_run
 ```
+
+#### Human intervention via Pico4 VR controllers
+
+Hold **both** Pico4 side (grip) buttons together to take over the robot from the
+policy mid-episode; release either grip to hand control back. While intervention
+is active, policy inference is paused (no WebSocket round-trip to the server),
+and on release the `ActionChunkBroker` cache is cleared so the next step
+re-infers fresh from the current observation.
+
+Prerequisites:
+
+- `BiPico4` teleop from `lerobot-xense` is importable (`lerobot.teleoperators.bi_pico4`)
+- XenseVR PC Service running and both Pico4 controllers detected
+- Not compatible with `--rtc_enabled` in this release (the RTC broker has its own
+  execution queue + blending; startup is refused if both flags are set)
+
+```bash
+mamba run -n lerobot-xense python -m examples.bi_flexiv_rizon4_rt.main \
+    --host 10.142.1.1 --port 8000 \
+    --pico4_intervention
+```
+
+Recommended first-run flow:
+
+1. `--dry_run --pico4_intervention` — hold both grips and confirm the printed 20D
+   action tracks the controller pose; release and confirm the next log shows the
+   `Clearing ActionChunkBroker cache (intervention released).` line.
+2. Real run with `--stiffness_ratio 0.1` — verify the handoff does not snap the
+   arm. The wrapper resyncs the teleop's internal target to the live TCP pose
+   every non-intervention frame to keep the first override frame continuous.
+
+Control scheme (inherited from `BiPico4`):
+
+| Input | Effect |
+|---|---|
+| Left + right grip held together | Both arms follow controller pose (intervention ON) |
+| Either grip released | Intervention OFF; policy resumes from the next observation |
+| Left / right trigger | Respective gripper position while intervention is on |
+
+While intervention is active, every step's action dict carries `is_intervention: True`
+(and `False` otherwise). Recording subscribers ignore unknown keys, so enabling
+`--record` alongside `--pico4_intervention` is safe; dataset-level annotation of
+intervention segments is not yet wired into the recorder.
 
 ---
 
@@ -172,8 +218,9 @@ TCP positions are **delta** actions; gripper positions are **absolute**.
 
 ```
 examples/bi_flexiv_rizon4_rt/
-├── main.py       # Entry point and CLI args
-├── env.py        # OpenPI Environment adapter (image resize, obs format)
-├── real_env.py   # BiFlexivRizon4RT robot control wrapper
-└── recorder.py   # LeRobot-format episode recorder subscriber
+├── main.py         # Entry point and CLI args
+├── env.py          # OpenPI Environment adapter (image resize, obs format)
+├── real_env.py     # BiFlexivRizon4RT robot control wrapper
+├── recorder.py     # LeRobot-format episode recorder subscriber
+└── intervention.py # Pico4 VR human-in-the-loop intervention wrappers
 ```
