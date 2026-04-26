@@ -346,19 +346,10 @@ export NCCL_IB_DISABLE=1
 #### BiARX5 — training-time RTC
 
 ```bash
-python scripts/compute_norm_stats.py --config-name pi05_base_arx5_lora_training_time_rtc
+python scripts/compute_norm_stats.py --config-name tie_shoes_50_episodes_no_adjust_training_time_rtc_0426_h100
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
-    pi05_base_arx5_lora_training_time_rtc \
-    --exp-name=training_time_rtc_20251209 --overwrite
-```
-
-#### Xense Flare — open lock (training-time RTC)
-
-```bash
-python scripts/compute_norm_stats.py --config-name pi05_base_xense_flare_open_lock_rtc_0228
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
-    pi05_base_xense_flare_open_lock_rtc_0228 \
-    --exp-name=xense_flare_open_lock_rtc_0228 --overwrite
+    tie_shoes_50_episodes_no_adjust_training_time_rtc_0426_h100 \
+    --exp-name=tie_shoes_50_episodes_no_adjust_training_time_rtc_0426_h100 --overwrite
 ```
 
 #### BiFlexiv — assemble box with phone stand
@@ -369,10 +360,12 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
     pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0403 \
     --exp-name=bi_flexiv_assemble_box_with_phone_stand_lora_20260403 --overwrite
 
-python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0410_merged_fixed
-WANDB_MODE=offline XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
-    pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0410_merged_fixed \
-    --exp-name=bi_flexiv_assemble_box_with_phone_stand_lora_0410_merged_fixed_20260413 --overwrite
+python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0422_merged_fixed_h100
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
+    pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0422_merged_fixed_h100 \
+    --exp-name=pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0422_merged_fixed_h100_0422 --overwrite
+
+
 ```
 
 ### Deployment Commands (latest per platform)

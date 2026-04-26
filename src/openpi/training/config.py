@@ -750,9 +750,9 @@ _CONFIGS = [
         fsdp_devices=1,
     ),
     TrainConfig(
-        name="pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0410_merged_fixed",
+        name="pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0422_merged_fixed_h100",
         model=pi0_config.Pi0Config(
-            paligemma_variant="gemma_2b_lora",
+            paligemma_variant="gemma_2b",
             action_expert_variant="gemma_300m",
             pi05=True,
             enable_training_time_rtc=True,
@@ -767,16 +767,52 @@ _CONFIGS = [
             ),
         ),
         ema_decay=None,
-        freeze_filter=pi0_config.Pi0Config(
-            pi05=True,
-            paligemma_variant="gemma_2b_lora",
-            # action_expert_variant="gemma_300m_lora",
-        ).get_freeze_filter(),
-        batch_size=64,
+        batch_size=256,
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
         num_train_steps=80_000,
-        num_workers=2,
-        fsdp_devices=1,
+        num_workers=64,
+        fsdp_devices=8,
+    ),
+    TrainConfig(
+        name="tie_shoes_50_episodes_no_adjust_training_time_rtc_0426_h100",
+        model=pi0_config.Pi0Config(
+            paligemma_variant="gemma_2b",
+            action_expert_variant="gemma_300m",
+            pi05=True,
+            enable_training_time_rtc=True,
+            max_delay=10,
+        ),
+        data=LeRobotAlohaDataConfig(
+            repo_id="Vertax/xense_bi_arx5_tie_white_shoelaces_1030_no_adjust",
+            adapt_to_pi=False,
+            repack_transforms=_transforms.Group(
+                inputs=[
+                    _transforms.RepackTransform(
+                        {
+                            "images": {
+                                "cam_high": "observation.images.head",
+                                "cam_left_wrist": "observation.images.left_wrist",
+                                "cam_right_wrist": "observation.images.right_wrist",
+                            },
+                            "state": "observation.state",
+                            "actions": "action",
+                            "prompt": "prompt",
+                        }
+                    )
+                ]
+            ),
+            base_config=DataConfig(
+                prompt_from_task=True,  # Set to True for prompt by task_name
+            ),
+        ),
+        save_interval=2000,
+        keep_period=10000,
+        ema_decay=None,
+        batch_size=256,
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
+        num_train_steps=20000,
+        num_workers=64,
+        fsdp_devices=8,
     ),
     TrainConfig(
         name="debug_pi05",
