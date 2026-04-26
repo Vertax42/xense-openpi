@@ -2,6 +2,7 @@ import dataclasses
 import functools
 import logging
 import platform
+import time
 from typing import Any
 
 import etils.epath as epath
@@ -217,13 +218,25 @@ def main(config: _config.TrainConfig):
     )
     init_wandb(config, resuming=resuming, enabled=config.wandb_enabled)
 
+    t_dl = time.monotonic()
+    logging.info("[INIT] calling create_data_loader() ...")
     data_loader = _data_loader.create_data_loader(
         config,
         sharding=data_sharding,
         shuffle=True,
     )
+    logging.info(f"[INIT] create_data_loader() done in {time.monotonic()-t_dl:.1f}s")
+
+    t_it = time.monotonic()
+    logging.info("[INIT] calling iter(data_loader) (this spawns workers) ...")
     data_iter = iter(data_loader)
+    logging.info(f"[INIT] iter() done in {time.monotonic()-t_it:.1f}s — workers spawned")
+
+    t_nb = time.monotonic()
+    logging.info("[INIT] waiting for first batch via next(data_iter) ...")
     batch = next(data_iter)
+    logging.info(f"[INIT] first batch received in {time.monotonic()-t_nb:.1f}s")
+
     logging.info(f"Initialized data loader:\n{training_utils.array_tree_to_info(batch)}")
 
     # Log images from first batch to sanity check.
@@ -256,21 +269,56 @@ def main(config: _config.TrainConfig):
     )
 
     infos = []
+    # --- stall diagnostics ---
+    STALL_THRESHOLD_S = 3.0  # log a warning when any phase exceeds this
+    t_prev_loop_end = time.monotonic()
     for step in pbar:
+        t_loop_start = time.monotonic()
+
+        t0 = time.monotonic()
         with sharding.set_mesh(mesh):
             train_state, info = ptrain_step(train_rng, train_state, batch)
+        t_dispatch = time.monotonic() - t0
+
         infos.append(info)
+
+        t_log = 0.0
         if step % config.log_interval == 0:
+            t0 = time.monotonic()
             stacked_infos = common_utils.stack_forest(infos)
             reduced_info = jax.device_get(jax.tree.map(jnp.mean, stacked_infos))
             info_str = ", ".join(f"{k}={v:.4f}" for k, v in reduced_info.items())
             pbar.write(f"Step {step}: {info_str}")
             wandb.log(reduced_info, step=step)
             infos = []
-        batch = next(data_iter)
+            t_log = time.monotonic() - t0
 
+        t0 = time.monotonic()
+        batch = next(data_iter)
+        t_next_batch = time.monotonic() - t0
+
+        t_ckpt = 0.0
         if (step % config.save_interval == 0 and step > start_step) or step == config.num_train_steps - 1:
+            t0 = time.monotonic()
             _checkpoints.save_state(checkpoint_manager, train_state, data_loader, step)
+            t_ckpt = time.monotonic() - t0
+
+        t_total = time.monotonic() - t_loop_start
+        # Warn on any slow phase OR any slow overall step
+        if (t_total > STALL_THRESHOLD_S or t_next_batch > STALL_THRESHOLD_S
+                or t_dispatch > STALL_THRESHOLD_S or t_ckpt > STALL_THRESHOLD_S):
+            pbar.write(
+                f"[STALL step={step}] total={t_total:.2f}s "
+                f"dispatch={t_dispatch:.2f}s next_batch={t_next_batch:.2f}s "
+                f"log={t_log:.2f}s ckpt={t_ckpt:.2f}s"
+            )
+        # Also log every 50 steps a summary line so we can see trends even without stalls
+        if step % 50 == 0:
+            pbar.write(
+                f"[TIMING step={step}] total={t_total:.2f}s "
+                f"dispatch={t_dispatch:.2f}s next_batch={t_next_batch:.2f}s "
+                f"log={t_log:.2f}s ckpt={t_ckpt:.2f}s"
+            )
 
     logging.info("Waiting for checkpoint manager to finish")
     checkpoint_manager.wait_until_finished()
