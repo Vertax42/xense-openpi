@@ -37,8 +37,13 @@ def make_attn_mask(input_mask, mask_ar):
       mask_ar: bool[?B, N] mask that's true where previous tokens cannot depend on
         it and false where it shares the same attention mask as the previous token.
     """
-    mask_ar = jnp.broadcast_to(mask_ar, input_mask.shape)
-    cumsum = jnp.cumsum(mask_ar, axis=1)
+    # Cumsum before broadcasting: when mask_ar is 1-D (a compile-time constant),
+    # this cuts XLA constant-folding cost from O(B*N^2) to O(N^2).
+    if mask_ar.ndim < input_mask.ndim:
+        cumsum = jnp.broadcast_to(jnp.cumsum(mask_ar, axis=-1), input_mask.shape)
+    else:
+        mask_ar = jnp.broadcast_to(mask_ar, input_mask.shape)
+        cumsum = jnp.cumsum(mask_ar, axis=1)
     attn_mask = cumsum[:, None, :] <= cumsum[:, :, None]
     valid_mask = input_mask[:, None, :] * input_mask[:, :, None]
     return jnp.logical_and(attn_mask, valid_mask)
@@ -172,9 +177,7 @@ class Pi0(_model.BaseModel):
         action_tokens = self.action_in_proj(noisy_actions)
         if timestep.ndim == 1:
             if timestep.shape[0] != noisy_actions.shape[0]:
-                raise ValueError(
-                    f"Expected timestep batch dimension {noisy_actions.shape[0]}, got {timestep.shape[0]}"
-                )
+                raise ValueError(f"Expected timestep batch dimension {noisy_actions.shape[0]}, got {timestep.shape[0]}")
         elif timestep.ndim == 2:
             expected_shape = noisy_actions.shape[:2]
             if timestep.shape != expected_shape:
@@ -382,6 +385,37 @@ class Pi0(_model.BaseModel):
         x_0, _ = jax.lax.while_loop(cond, step, (noise, 1.0))
         return x_0
 
+    def _log_rtc_prefix_diagnostics(
+        self,
+        x_0: jax.Array,
+        action_prefix: jax.Array,
+        action_prefix_mask: jax.Array,
+        inference_delay: jax.Array,
+    ) -> None:
+        """Host-side print of max/mean |x_0[:delay] - action_prefix[:delay]|.
+
+        If RTC prefix freezing works as intended in `training_time_rtc_sample_actions`,
+        this should be exactly 0 in the prefix region. A nonzero value points at
+        a sampling bug (prefix drifted during denoising) rather than a
+        client-side serialization issue. Printed from inside a jit via
+        `jax.debug.print`, which does not break compilation.
+        """
+        delay_scalar = inference_delay[0]
+        # For the host print, reduce over batch/time/dim using the prefix mask,
+        # so padding past the delay does not pollute the stats.
+        mask3d = action_prefix_mask[:, :, None]
+        diff = jnp.abs(x_0 - action_prefix) * mask3d
+        denom = jnp.maximum(jnp.sum(mask3d), 1.0)
+        max_diff = jnp.max(diff)
+        mean_diff = jnp.sum(diff) / denom
+        jax.debug.print(
+            "RTC sampler prefix diagnostics: delay={d} max|x0 - prefix|={mx:.6f} "
+            "mean|x0 - prefix|={me:.6f} (expected ~0 if prefix is frozen)",
+            d=delay_scalar,
+            mx=max_diff,
+            me=mean_diff,
+        )
+
     def training_time_rtc_sample_actions(
         self,
         rng: at.KeyArrayLike,
@@ -463,9 +497,7 @@ class Pi0(_model.BaseModel):
             x_t = jnp.where(action_prefix_mask[:, :, None], action_prefix, x_t)
             time_masked = jnp.where(action_prefix_mask, 0.0, time)
 
-            suffix_tokens, suffix_mask, suffix_ar_mask, adarms_cond = self.embed_suffix(
-                observation, x_t, time_masked
-            )
+            suffix_tokens, suffix_mask, suffix_ar_mask, adarms_cond = self.embed_suffix(observation, x_t, time_masked)
             # `suffix_attn_mask` is shape (b, suffix_len, suffix_len) indicating how the suffix tokens can attend to each
             # other
             suffix_attn_mask = make_attn_mask(suffix_mask, suffix_ar_mask)
@@ -492,8 +524,8 @@ class Pi0(_model.BaseModel):
             )
             assert prefix_out is None
             v_t = self.action_out_proj(suffix_out[:, -self.action_horizon :])
-
-            return x_t + dt * v_t, time + dt
+            x_t = jnp.where(action_prefix_mask[:, :, None], action_prefix, x_t + dt * v_t)
+            return x_t, time + dt
 
         def cond(carry):
             x_t, time = carry
@@ -501,4 +533,10 @@ class Pi0(_model.BaseModel):
             return time >= -dt / 2
 
         x_0, _ = jax.lax.while_loop(cond, step, (noise, 1.0))
+        # Server-side RTC diagnostic: without a post-loop re-clamp of the
+        # prefix, x_0[:, :delay] = action_prefix + dt * v_t_last[prefix], which
+        # the client observes as a nonzero "frozen prefix" diff at merge time.
+        # This host-print confirms whether drift is sampler-side (here) or
+        # serialization-side (client).
+        self._log_rtc_prefix_diagnostics(x_0, action_prefix, action_prefix_mask, inference_delay)
         return x_0

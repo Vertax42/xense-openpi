@@ -67,6 +67,7 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
         delay_margin: int = 2,  # Safety margin added to the estimated delay
         delay_history_size: int = 10,  # Number of recent delays tracked
         dry_run: bool = False,
+        delta_state_dim: int = 0,
     ):
         self._policy = policy
         self._frequency_hz = frequency_hz
@@ -75,6 +76,10 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
         self._execution_horizon = execution_horizon
         self._default_delay = default_delay
         self._delay_margin = max(0, int(delay_margin))
+        # Retained for compatibility with existing call sites. RTC prefixes are
+        # now transformed on the policy server using the training input
+        # pipeline, so the client no longer attempts to re-base delta actions.
+        self._delta_state_dim = int(delta_state_dim)
 
         self._action_queue = ActionQueue(rtc_enabled=rtc_enabled, blend_steps=blend_steps)
         self._latency_tracker = LatencyTracker()
@@ -123,6 +128,11 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
                     # Prepare for inference
                     current_time = time.perf_counter()
                     action_index_before_inference = self._action_queue.get_action_index()
+
+                    # Snapshot of the prefix region we send to the model, used
+                    # after inference to verify the frozen-prefix invariant.
+                    # Populated only in normal operation (not during warmup).
+                    prefix_sent: Optional[np.ndarray] = None
 
                     # Determine prev_chunk_left_over and estimated_delay based on warmup state
                     if not self._warmup_done:
@@ -188,6 +198,19 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
                             f"prev_chunk shape: {prev_chunk_left_over.shape if prev_chunk_left_over is not None else None}"
                         )
 
+                        # Snapshot the prefix region we are about to send so we
+                        # can verify after inference whether the model actually
+                        # froze it byte-for-byte. This is the only reliable
+                        # frozen-prefix check: comparing against original_queue
+                        # in action_queue.merge() is meaningless when
+                        # delta_state_dim > 0 because the two sides live in
+                        # different reference frames (delta w.r.t. prev_state
+                        # vs delta w.r.t. cur_state).
+                        if prev_chunk_left_over is not None and estimated_delay_steps > 0:
+                            n_pref = min(estimated_delay_steps, len(prev_chunk_left_over))
+                            if n_pref > 0:
+                                prefix_sent = prev_chunk_left_over[:n_pref].copy()
+
                     results = self._policy.infer(
                         obs,
                         prev_chunk_left_over=prev_chunk_left_over,
@@ -202,24 +225,51 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
 
                     # Get actions
                     processed_actions = results.get("actions")
-                    original_actions = results.get("actions_original")
 
                     if processed_actions is None:
                         logger.error("Policy returned no 'actions' key")
                         continue
 
-                    if original_actions is None:
-                        original_actions = processed_actions
+                    # RTC guidance now uses the same action space that is
+                    # actually executed on the robot. The policy server
+                    # converts that absolute prefix back into the model's
+                    # training space using its normal input transforms before
+                    # sampling the next chunk. That avoids client-side
+                    # assumptions about delta masks, normalization, or state
+                    # ordering.
+                    queued_actions = processed_actions
+
+                    # End-to-end frozen-prefix check in execution space. If the
+                    # policy server correctly transforms prev_chunk_left_over
+                    # into model space and the model freezes it, then after
+                    # output transforms the first `inference_delay` actions
+                    # should match the prefix we sent byte-for-byte.
+                    if prefix_sent is not None:
+                        n_pref = len(prefix_sent)
+                        n_pref = min(n_pref, len(processed_actions))
+                        if n_pref > 0:
+                            diff_pref = np.abs(processed_actions[:n_pref] - prefix_sent[:n_pref])
+                            max_diff = float(np.max(diff_pref))
+                            mean_diff = float(np.mean(diff_pref))
+                            # per-dim max to identify which dimensions drift
+                            dim_max = np.max(diff_pref, axis=0)
+                            worst_dim = int(np.argmax(dim_max))
+                            logger.info(
+                                f"RTC Prefix Freeze Check: inference_delay={estimated_delay_steps}, "
+                                f"new[0:{n_pref}] vs sent_prev[0:{n_pref}] "
+                                f"max={max_diff:.4f} (dim {worst_dim}), mean={mean_diff:.4f}, "
+                                "(should be ~0 if model froze prefix exactly)"
+                            )
 
                     # Handle warmup phases
                     if not self._warmup_done:
                         if self._warmup_prev_chunk is None:
                             # ===== WARMUP PHASE 1 COMPLETE =====
-                            # Save original_actions for next inference, do NOT execute
-                            self._warmup_prev_chunk = original_actions
+                            # Save queued_actions for next inference, do NOT execute
+                            self._warmup_prev_chunk = queued_actions
                             logger.info(
                                 f"✅ WARMUP Phase 1 complete. Latency: {latency * 1000:.0f}ms. "
-                                f"Saved {original_actions.shape} for Phase 2. Actions NOT executed."
+                                f"Saved {queued_actions.shape} for Phase 2. Actions NOT executed."
                             )
                             # Don't set _first_inference_done, continue to Phase 2
                             continue
@@ -250,7 +300,7 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
                     merge_start = time.perf_counter()
                     real_delay_before_merge = self._action_queue.get_action_index() - action_index_before_inference
                     self._action_queue.merge(
-                        new_original_actions=original_actions,
+                        new_original_actions=queued_actions,
                         new_processed_actions=processed_actions,
                         estimated_delay=estimated_delay_steps,
                         action_index_before_inference=action_index_before_inference,

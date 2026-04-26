@@ -205,8 +205,17 @@ class ActionQueue:
         """
         truncate_idx = max(0, min(truncate_delay, len(new_original_actions)))
 
-        # Debug: Verify RTC alignment in the prefix region
-        # new[0:d] should match prev_chunk_left_over[0:d] = old[aib:aib+d]
+        # Debug: Verify RTC alignment in the prefix region.
+        # NOTE: When delta_state_dim > 0 in the broker (delta-action policies
+        # like BiFlexiv), this check is MISLEADING. self.original_queue holds
+        # deltas w.r.t. the PREVIOUS inference's obs.state, while
+        # new_original_actions holds deltas w.r.t. the CURRENT obs.state. The
+        # broker re-bases prev_chunk_left_over before sending it to the model,
+        # so new[0:d] == (rebased prev_chunk)[0:d] != original_queue[aib:aib+d]
+        # when the robot has moved between inferences. The true frozen-prefix
+        # invariant is logged by the broker as "RTC Prefix Freeze Check"
+        # (compares new[0:d] against what was actually sent). This log below
+        # is kept for absolute-action policies where the two frames coincide.
         if self.original_queue is not None and truncate_idx > 0:
             aib = action_index_before_inference
             align_len = min(truncate_idx, len(self.original_queue) - aib, len(new_original_actions))

@@ -75,10 +75,28 @@ class Policy(BasePolicy):
         # Make a copy since transformations may modify the inputs in place.
         inputs = jax.tree.map(lambda x: x, obs)
         inputs = self._input_transform(inputs)
+        rtc_inputs = None
+
+        # RTC prefixes must live in the same action space the model was trained on.
+        # For delta/normalized policies, the client sends the already-executed
+        # absolute actions back as `prev_chunk_left_over`. We transform those
+        # actions using the *same* input pipeline as normal training/inference,
+        # but without disturbing the real observation batch used for sampling.
+        if "prev_chunk_left_over" in kwargs and kwargs["prev_chunk_left_over"] is not None:
+            rtc_obs = jax.tree.map(lambda x: x, obs)
+            # Some websocket/msgpack paths return read-only NumPy views. The
+            # input transform stack may mutate `actions` in place
+            # (e.g. DeltaActions), so RTC prefixes must be copied to a
+            # writable array before reusing the training-time preprocessing.
+            rtc_obs["actions"] = np.array(kwargs["prev_chunk_left_over"], copy=True)
+            rtc_inputs = self._input_transform(rtc_obs)
+
         if not self._is_pytorch_model:
             # Make a batch and convert to jax.Array.
             inputs = jax.tree.map(lambda x: jnp.asarray(x)[np.newaxis, ...], inputs)
             self._rng, sample_rng_or_pytorch_device = jax.random.split(self._rng)
+            if rtc_inputs is not None:
+                rtc_inputs = jax.tree.map(lambda x: jnp.asarray(x)[np.newaxis, ...], rtc_inputs)
         else:
             # Convert inputs to PyTorch tensors and move to correct device
             inputs = jax.tree.map(
@@ -86,6 +104,11 @@ class Policy(BasePolicy):
                 inputs,
             )
             sample_rng_or_pytorch_device = self._pytorch_device
+            if rtc_inputs is not None:
+                rtc_inputs = jax.tree.map(
+                    lambda x: torch.from_numpy(np.array(x)).to(self._pytorch_device)[None, ...],
+                    rtc_inputs,
+                )
 
         # Prepare kwargs for sample_actions
         sample_kwargs = dict(self._sample_kwargs)
@@ -108,6 +131,9 @@ class Policy(BasePolicy):
                     v = jnp.asarray(v)
                     if v.ndim == 2:  # Assuming (chunk, dim) -> (1, chunk, dim)
                         v = v[np.newaxis, ...]
+
+            if k == "prev_chunk_left_over" and rtc_inputs is not None:
+                v = rtc_inputs["actions"]
             sample_kwargs[k] = v
 
         if noise is not None:
