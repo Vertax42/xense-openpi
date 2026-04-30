@@ -815,6 +815,32 @@ _CONFIGS = [
         fsdp_devices=8,
     ),
     TrainConfig(
+        name="pi05_base_bi_flexiv_earbuds_case_assembly_with_lid_operation_rtc_0429_h100",
+        model=pi0_config.Pi0Config(
+            paligemma_variant="gemma_2b",
+            action_expert_variant="gemma_300m",
+            pi05=True,
+            enable_training_time_rtc=True,
+            max_delay=10,
+        ),
+        data=LeRobotBiFlexivDataConfig(
+            repo_id="Xense/earbuds_case_assembly_with_lid_operation",
+            use_delta_cartesian_actions=True,
+            default_prompt="Pick up the earbuds from the acrylic plate, open the charging case, precisely align and gently insert the earbuds using contact feedback, then close the lid securely",
+            base_config=DataConfig(
+                prompt_from_task=True,  # Set to True for prompt by task_name
+            ),
+        ),
+        save_interval=2000,
+        keep_period=10000,
+        ema_decay=None,
+        batch_size=256,
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
+        num_train_steps=20000,
+        num_workers=64,
+        fsdp_devices=8,
+    ),
+    TrainConfig(
         name="debug_pi05",
         model=pi0_config.Pi0Config(pi05=True, paligemma_variant="dummy", action_expert_variant="dummy"),
         data=FakeDataConfig(),

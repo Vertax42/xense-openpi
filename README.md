@@ -364,8 +364,15 @@ python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_assemble_
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
     pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0422_merged_fixed_h100 \
     --exp-name=pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0422_merged_fixed_h100_0422 --overwrite
+```
 
+#### BiFlexiv — earbuds case assembly with lid operation
 
+```bash
+python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_earbuds_case_assembly_with_lid_operation_rtc_0429_h100
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
+    pi05_base_bi_flexiv_earbuds_case_assembly_with_lid_operation_rtc_0429_h100 \
+    --exp-name=pi05_base_bi_flexiv_earbuds_case_assembly_with_lid_operation_rtc_0429_h100_0429 --overwrite
 ```
 
 ### Deployment Commands (latest per platform)
@@ -405,7 +412,22 @@ python scripts/serve_policy.py \
     --default-prompt="assemble the box with the phone stand" \
     policy:checkpoint \
     --policy.config=pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0410_merged_fixed \
-    --policy.dir=checkpoints/pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0410_merged_fixed/bi_flexiv_assemble_box_with_phone_stand_lora_0410_merged_fixed_20260413/39000
+    --policy.dir=checkpoints/pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0410_merged_fixed/bi_flexiv_assemble_box_with_phone_stand_lora_0410_merged_fixed_20260413/79999
+
+python scripts/serve_policy.py \
+    --default-prompt="assemble the box with the phone stand" \
+    policy:checkpoint \
+    --policy.config=pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0422_merged_fixed_h100 \
+    --policy.dir=checkpoints/pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0422_merged_fixed_h100/pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0422_merged_fixed_h100_0422/79999
+```
+
+#### BiFlexiv — earbuds case assembly with lid operation inference
+```bash
+python scripts/serve_policy.py \
+    --default-prompt="Pick up the earbuds from the acrylic plate, open the charging case, precisely align and gently insert the earbuds using contact feedback, then close the lid securely" \
+    policy:checkpoint \
+    --policy.config=pi05_base_bi_flexiv_earbuds_case_assembly_with_lid_operation_rtc_0429_h100 \
+    --policy.dir=checkpoints/pi05_base_bi_flexiv_earbuds_case_assembly_with_lid_operation_rtc_0429_h100/pi05_base_bi_flexiv_earbuds_case_assembly_with_lid_operation_rtc_0429_h100_0429/38000
 ```
 
 ### Running the robot client
