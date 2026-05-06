@@ -408,14 +408,6 @@ python scripts/serve_policy.py \
 python scripts/serve_policy.py \
     --default-prompt="assemble the box with the phone stand" \
     policy:checkpoint \
-    --policy.config=pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0403 \
-    --policy.dir=checkpoints/pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0403/bi_flexiv_assemble_box_with_phone_stand_lora_20260403/19999
-```
-
-```bash
-python scripts/serve_policy.py \
-    --default-prompt="assemble the box with the phone stand" \
-    policy:checkpoint \
     --policy.config=pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0410_merged_fixed \
     --policy.dir=checkpoints/pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0410_merged_fixed/bi_flexiv_assemble_box_with_phone_stand_lora_0410_merged_fixed_20260413/79999
 
@@ -424,6 +416,12 @@ python scripts/serve_policy.py \
     policy:checkpoint \
     --policy.config=pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0422_merged_fixed_h100 \
     --policy.dir=checkpoints/pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0422_merged_fixed_h100/pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0422_merged_fixed_h100_0422/79999
+
+python scripts/serve_policy.py \
+    --default-prompt="assemble the box with the phone stand" \
+    policy:checkpoint \
+    --policy.config=pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0430_merged_fixed_h100 \
+    --policy.dir=checkpoints/pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0430_merged_fixed_h100/pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0430_merged_fixed_h100_0430/79999
 ```
 
 #### BiFlexiv — earbuds case assembly with lid operation inference
