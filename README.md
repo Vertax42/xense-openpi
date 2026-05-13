@@ -369,15 +369,19 @@ python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_assemble_
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
     pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0430_merged_fixed_h100 \
     --exp-name=pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0430_merged_fixed_h100_0430 --overwrite
+
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
+    pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0430_merged_fixed_h100 \
+    --exp-name=pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0430_merged_fixed_h100_0510 --overwrite
 ```
 
 #### BiFlexiv — earbuds case assembly with lid operation
 
 ```bash
-python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_earbuds_case_assembly_with_lid_operation_rtc_0429_h100
+python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_earbuds_case_sequential_insertion_teleop_rtc_0513_h100
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
-    pi05_base_bi_flexiv_earbuds_case_assembly_with_lid_operation_rtc_0429_h100 \
-    --exp-name=pi05_base_bi_flexiv_earbuds_case_assembly_with_lid_operation_rtc_0429_h100_0429 --overwrite
+    pi05_base_bi_flexiv_earbuds_case_sequential_insertion_teleop_rtc_0513_h100 \
+    --exp-name=pi05_base_bi_flexiv_earbuds_case_sequential_insertion_teleop_rtc_0513_h100_0513 --overwrite
 ```
 
 ### Deployment Commands (latest per platform)
