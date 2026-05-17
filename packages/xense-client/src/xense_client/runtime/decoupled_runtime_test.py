@@ -236,5 +236,53 @@ def test_prompt_shutdown_on_episode_complete():
     assert elapsed < 2.0, f"shutdown took {elapsed:.2f}s"
 
 
+# ---------------------------------------------------------------------------
+# T7: request_stop() ends the current episode promptly and prevents the
+# next one from starting (the SIGINT path).
+# ---------------------------------------------------------------------------
+def test_request_stop_ends_run_promptly():
+    # 3-episode run that would otherwise loop forever (no auto-complete).
+    env = FakeEnv(obs_period_s=1.0 / 30)
+    broker = PacedBroker(inner=FakePolicy(), queue_size=20)
+    runtime = DecoupledRuntime(
+        environment=env,
+        broker=broker,
+        subscribers=[],
+        obs_hz=30.0,
+        action_hz=60.0,
+        num_episodes=3,
+        max_episode_steps=0,
+    )
+
+    # Run in a thread so we can request_stop from outside.
+    done = threading.Event()
+
+    def _run():
+        runtime.run()
+        done.set()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+
+    # Let the runtime get going.
+    time.sleep(0.3)
+
+    # Trigger graceful shutdown.
+    t0 = time.time()
+    runtime.request_stop()
+    finished = done.wait(timeout=2.0)
+    elapsed = time.time() - t0
+
+    assert finished, f"runtime.run() did not return within 2 s after request_stop"
+    assert elapsed < 2.0, f"shutdown took {elapsed:.2f}s"
+
+    # Only the first episode should have run — the next two were skipped.
+    # FakeEnv's reset is called once per started episode + once for the
+    # final env reset in run(), so total resets == 1 + 1 = 2.
+    assert env._reset_count == 2, (
+        f"expected 1 episode + 1 final reset = 2 env resets, got {env._reset_count}"
+    )
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

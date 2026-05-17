@@ -79,6 +79,9 @@ class DecoupledRuntime:
 
         self._in_episode = False
         self._action_steps = 0
+        # Set by request_stop() to prevent subsequent episodes from starting
+        # after a SIGINT mid-episode. Checked between episodes in run().
+        self._stop_requested = False
 
         # Latest obs snapshot — written by obs thread, read by action thread
         # for subscriber pairing. Single-slot, last-writer-wins.
@@ -90,7 +93,10 @@ class DecoupledRuntime:
     # Public entry point
     # ------------------------------------------------------------------
     def run(self) -> None:
+        self._stop_requested = False
         for _ in range(self._num_episodes):
+            if self._stop_requested:
+                break
             self._run_episode()
         # Final reset for the real env to return to home position.
         self._environment.reset()
@@ -98,6 +104,18 @@ class DecoupledRuntime:
     def mark_episode_complete(self) -> None:
         self._in_episode = False
         self._stop_event.set()
+
+    def request_stop(self) -> None:
+        """Request a graceful runtime shutdown.
+
+        Ends the current episode (waking the main thread + signalling the
+        action/obs threads via _stop_event) and prevents subsequent episodes
+        from starting. Intended for SIGINT handlers — letting run() return
+        naturally so the caller's finally clause can disconnect cleanly
+        (including the home-position move via env.disconnect()).
+        """
+        self._stop_requested = True
+        self.mark_episode_complete()
 
     # ------------------------------------------------------------------
     # Episode lifecycle

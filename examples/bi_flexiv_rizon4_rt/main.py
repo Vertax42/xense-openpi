@@ -31,8 +31,10 @@ Example usage:
 """
 
 from dataclasses import dataclass
+import os
 import signal
 import sys
+import threading
 
 from lerobot.teleoperators.bi_pico4 import BiPico4
 from lerobot.teleoperators.bi_pico4.config_bi_pico4 import BiPico4Config
@@ -369,10 +371,26 @@ def main(args: Args) -> None:
         except Exception as e:
             logger.warning(f"Error disconnecting: {e}")
 
+    # SIGINT handling: first press asks the runtime to wind down threads
+    # cleanly (DecoupledRuntime joins its action + obs threads here, ~0.5 s);
+    # main's `finally` then runs safe_disconnect, which homes the arms via
+    # MoveJ before releasing the SDK — same end-state as the original
+    # synchronous runtime. A second Ctrl+C while shutdown is in progress
+    # escapes to os._exit, accepting that the arms may not return home.
+    _shutdown_in_progress = threading.Event()
+
     def signal_handler(sig, frame):
-        logger.info("Ctrl+C detected, disconnecting...")
-        safe_disconnect()
-        sys.exit(0)
+        if _shutdown_in_progress.is_set():
+            logger.warning(
+                "Second Ctrl+C — forcing exit. Arms may not return home cleanly."
+            )
+            os._exit(1)
+        _shutdown_in_progress.set()
+        logger.info(
+            "Ctrl+C — stopping runtime gracefully "
+            "(press Ctrl+C again to force exit)"
+        )
+        runtime.request_stop()
 
     signal.signal(signal.SIGINT, signal_handler)
 
