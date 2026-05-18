@@ -375,7 +375,7 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
     --exp-name=pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0430_merged_fixed_h100_0510 --overwrite
 ```
 
-#### BiFlexiv — earbuds case assembly with lid operation
+#### BiFlexiv — earbuds case sequential insertion task
 
 ```bash
 python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_earbuds_case_sequential_insertion_teleop_rtc_0513_h100
@@ -426,6 +426,12 @@ python scripts/serve_policy.py \
     policy:checkpoint \
     --policy.config=pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0430_merged_fixed_h100 \
     --policy.dir=checkpoints/pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0430_merged_fixed_h100/pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0430_merged_fixed_h100_0430/79999
+
+python scripts/serve_policy.py \
+    --default-prompt="assemble the box with the phone stand" \
+    policy:checkpoint \
+    --policy.config=pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0430_merged_fixed_h100 \
+    --policy.dir=checkpoints/pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0430_merged_fixed_h100/pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0430_merged_fixed_h100_0510/79999
 ```
 
 #### BiFlexiv — earbuds case assembly with lid operation inference
@@ -433,8 +439,8 @@ python scripts/serve_policy.py \
 python scripts/serve_policy.py \
     --default-prompt="Pick up the earbuds from the acrylic plate, open the charging case, precisely align and gently insert the earbuds using contact feedback, then close the lid securely" \
     policy:checkpoint \
-    --policy.config=pi05_base_bi_flexiv_earbuds_case_assembly_with_lid_operation_rtc_0429_h100 \
-    --policy.dir=checkpoints/pi05_base_bi_flexiv_earbuds_case_assembly_with_lid_operation_rtc_0429_h100/pi05_base_bi_flexiv_earbuds_case_assembly_with_lid_operation_rtc_0429_h100_0429/38000
+    --policy.config=pi05_base_bi_flexiv_earbuds_case_sequential_insertion_teleop_rtc_0513_h100 \
+    --policy.dir=checkpoints/pi05_base_bi_flexiv_earbuds_case_sequential_insertion_teleop_rtc_0513_h100/pi05_base_bi_flexiv_earbuds_case_sequential_insertion_teleop_rtc_0513_h100_0513/19999
 ```
 
 ### Running the robot client
