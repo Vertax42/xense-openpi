@@ -96,7 +96,35 @@ def _build_train_config(name: str, raw: dict[str, Any]) -> "TrainConfig":  # noq
         else:
             kwargs[key] = value
 
+    # Auto-derive freeze_filter for LoRA model variants. Pi0Config.get_freeze_filter()
+    # produces the correct flax.nnx filter tree from the variant strings alone, so YAML
+    # authors don't need to express filter trees by hand. Only kicks in when:
+    #   1) the user didn't specify freeze_filter explicitly, AND
+    #   2) the model is Pi0Config with a "lora" substring in either variant.
+    _maybe_inject_lora_freeze_filter(kwargs)
+
     return _config.TrainConfig(**kwargs)
+
+
+def _maybe_inject_lora_freeze_filter(kwargs: dict[str, Any]) -> None:
+    """If the YAML omitted freeze_filter and the model is LoRA, derive it from the model.
+
+    Implements the same pattern that _CONFIGS uses by hand:
+        freeze_filter=Pi0Config(pi05=..., paligemma_variant="...lora", ...).get_freeze_filter()
+    """
+    if "freeze_filter" in kwargs:
+        return  # user provided one explicitly; respect that
+    model = kwargs.get("model")
+    if model is None:
+        return
+    # Only Pi0Config defines get_freeze_filter today.
+    if not hasattr(model, "get_freeze_filter"):
+        return
+    paligemma = getattr(model, "paligemma_variant", "") or ""
+    action_expert = getattr(model, "action_expert_variant", "") or ""
+    if "lora" not in paligemma and "lora" not in action_expert:
+        return
+    kwargs["freeze_filter"] = model.get_freeze_filter()
 
 
 def _build_polymorphic(field_name: str, spec: Any) -> Any:

@@ -695,7 +695,7 @@ _CONFIGS = [
         name="pi05_base_bi_flexiv_pack_6_cosmetic_bottles_lora",
         model=pi0_config.Pi0Config(
             paligemma_variant="gemma_2b_lora",
-            action_expert_variant="gemma_300m",
+            action_expert_variant="gemma_300m_lora",
             pi05=True,
             enable_training_time_rtc=True,
             max_delay=10,
@@ -712,7 +712,7 @@ _CONFIGS = [
         freeze_filter=pi0_config.Pi0Config(
             pi05=True,
             paligemma_variant="gemma_2b_lora",
-            # action_expert_variant="gemma_300m_lora",
+            action_expert_variant="gemma_300m_lora",
         ).get_freeze_filter(),
         batch_size=64,
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
