@@ -384,6 +384,29 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
     --exp-name=pi05_base_bi_flexiv_earbuds_case_sequential_insertion_teleop_rtc_0513_h100_0513 --overwrite
 ```
 
+#### BiFlexiv - shoe_insole_retrieval_and_packing_0
+
+```bash
+python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
+    pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100 \
+    --exp-name=pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100_0516 --overwrite
+
+python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
+    pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100 \
+    --exp-name=pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100_0519 --overwrite
+```
+
+#### BiFlexiv - shoe_insole_retrieval_and_packing_1
+
+```bash
+python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_newbalacne_shoe_insole_retrieval_and_packing_0515_h100
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
+    pi05_base_bi_flexiv_newbalacne_shoe_insole_retrieval_and_packing_0515_h100 \
+    --exp-name=pi05_base_bi_flexiv_newbalacne_shoe_insole_retrieval_and_packing_0515_h100_0517 --overwrite
+```
+
 ### Deployment Commands (latest per platform)
 
 #### BiARX5 — training-time RTC inference
