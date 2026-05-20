@@ -810,7 +810,7 @@ _CONFIGS = [
         fsdp_devices=8,
     ),
     TrainConfig(
-        name="pi05_base_bi_flexiv_earbuds_case_sequential_insertion_teleop_rtc_0513_h100",
+        name="pi05_base_bi_flexiv_earbuds_case_insertion_teleop_rtc_0520_a100",
         model=pi0_config.Pi0Config(
             paligemma_variant="gemma_2b",
             action_expert_variant="gemma_300m",
@@ -819,9 +819,9 @@ _CONFIGS = [
             max_delay=10,
         ),
         data=LeRobotBiFlexivDataConfig(
-            repo_id="Xense/earbud_case_sequential_insertion_teleop",
+            repo_id="Xense/earbud_case_insertion_teleop_0515",
             use_delta_cartesian_actions=True,
-            default_prompt="Pick up the earbuds from the holder, open the charging case, carefully align and insert the earbuds into the charging slots using tactile feedback, then close the lid securely and put the earbuds back into another holder",
+            default_prompt="Pick up each earbud case from the left stands, insert the matching earbuds, close the lid, and place the case in the box.",
             base_config=DataConfig(
                 prompt_from_task=True,  # Set to True for prompt by task_name
             ),
