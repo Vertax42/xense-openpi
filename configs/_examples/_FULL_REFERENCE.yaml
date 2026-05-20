@@ -1,0 +1,239 @@
+# =============================================================================
+# FULL REFERENCE YAML — every TrainConfig field, every registered type
+# =============================================================================
+#
+# This file is NOT meant to be loaded — its filename starts with `_` so
+# get_config("_FULL_REFERENCE") will work but it's labelled as a reference,
+# not a real config. Most fields below carry their default value (no need to
+# repeat them in your own YAMLs) and the polymorphic sections are commented-
+# out alternatives showing every registered class.
+#
+# How to use this file:
+#   1. Copy the closest real example from this directory to configs/<your_task>.yaml.
+#   2. Open this file alongside it to look up "what does field X do" or
+#      "what other classes can go into data.type".
+#   3. Override only the fields you need to change. Anything you omit takes
+#      the default shown here.
+#
+# Schema rules:
+#   - Filename stem == config name. Do not put `name:` inside the YAML.
+#   - `exp_name` is supplied on the CLI (`--exp-name=run_0520`), not here.
+#   - Polymorphic fields (model / data / weight_loader / lr_schedule / optimizer)
+#     require a `type:` discriminator. Every registered class is shown below.
+#   - All registered classes live in `src/openpi/training/registry.py`.
+# =============================================================================
+
+
+# ---------------------------------------------------------------------------
+# Top-level metadata
+# ---------------------------------------------------------------------------
+
+project_name: openpi           # wandb project; rarely needs changing
+
+# exp_name: <set via CLI>      # --exp-name=run_0520 (do not put here)
+
+
+# ---------------------------------------------------------------------------
+# model: BaseModelConfig subclass (dispatched by `type:`)
+# Registry: MODELS — see src/openpi/training/registry.py
+# ---------------------------------------------------------------------------
+
+model:
+  type: Pi0Config              # ← one of: Pi0Config, Pi0FASTConfig, Pi0TactileConfig
+
+  # ---- shared by all BaseModelConfig subclasses ----
+  action_dim: 32               # padded action vector size; pi0 family uses 32
+  action_horizon: 50           # number of future actions predicted at once
+  max_token_len: null          # null → variant default (Pi0=48, Pi0FAST=250)
+  dtype: bfloat16              # bfloat16 or float32
+
+  # ---- Pi0Config-specific ----
+  paligemma_variant: gemma_2b       # gemma_2b | dummy
+  action_expert_variant: gemma_300m # gemma_300m | gemma_2b | dummy
+  pi05: false                       # true ⇒ pi0.5 model; required for `discrete_state_input` and RTC
+  discrete_state_input: null        # null = follow pi05 default; only valid when pi05=true
+  enable_training_time_rtc: false   # Real-Time Control fine-tune mode (pi0.5 only)
+  max_delay: 10                     # RTC action delay window; ignored if RTC off
+
+  # ---- Pi0FASTConfig-specific (uncomment when using Pi0FASTConfig) ----
+  # fast_model_tokenizer: null          # optional override; defaults to FASTTokenizer
+  # fast_model_tokenizer_kwargs: null   # dict[str, Any] passed to the tokenizer
+
+  # ---- Pi0TactileConfig has the same fields as Pi0Config minus RTC ----
+
+
+# ---------------------------------------------------------------------------
+# data: DataConfigFactory subclass (dispatched by `type:`)
+# Registry: DATA_CONFIGS — see src/openpi/training/registry.py
+# ---------------------------------------------------------------------------
+
+data:
+  type: LeRobotBiFlexivDataConfig    # ← see all options below
+
+  # ---- shared by every DataConfigFactory ----
+  repo_id: Xense/<your_dataset>      # REQUIRED — LeRobot dataset id
+  assets:                            # where to load norm stats etc. from
+    assets_dir: null                 # null ⇒ use config's assets_base_dir
+    asset_id: null                   # null ⇒ use repo_id
+  base_config:                       # nested DataConfig for advanced overrides
+    prompt_from_task: true           # true ⇒ pull prompt from LeRobot `task` column
+    # Most users only need prompt_from_task here. Other DataConfig fields:
+    # use_quantile_norm: false       # auto-true for non-pi0 models; rarely override
+    # action_sequence_keys: [actions]
+    # rlds_data_dir: null            # only relevant for RLDS path
+    # action_space: null
+    # filter_dict_path: null
+
+  # ---- LeRobotBiFlexivDataConfig-specific ----
+  use_delta_cartesian_actions: true  # delta-encode 18 TCP dims, keep 2 grippers absolute
+  default_prompt: "Describe the task in plain language."
+  # repack_transforms: <Group object — keep default; rarely override>
+  # action_sequence_keys: [action]
+
+  # ---- LeRobotXenseFlareDataConfig-specific (uncomment when used) ----
+  # use_delta_cartesian_actions: true
+  # default_prompt: "..."
+
+  # ---- LeRobotAlohaDataConfig-specific (uncomment when used) ----
+  # use_delta_joint_actions: true       # delta-encode joints, keep grippers absolute
+  # default_prompt: "..."
+  # adapt_to_pi: false                  # ALOHA → π robot coordinate adaptation
+  # adapt_to_arx5: false                # ALOHA → BiARX5 adaptation
+
+  # ---- LeRobotDROIDDataConfig has no extra fields beyond the shared set ----
+
+  # ---- RLDSDroidDataConfig-specific (uncomment when used) ----
+  # rlds_data_dir: /path/to/droid_rlds  # REQUIRED for this type
+  # action_space: null                  # JOINT_POSITION | CARTESIAN_POSITION | ...
+  # filter_dict_path: gs://openpi-assets/droid/droid_sample_ranges_v1_0_1.json
+
+  # ---- FakeDataConfig (debug/CI only) ----
+  # repo_id: fake                       # no other fields
+
+
+# ---------------------------------------------------------------------------
+# weight_loader: WeightLoader subclass (dispatched by `type:`)
+# Registry: WEIGHT_LOADERS
+# ---------------------------------------------------------------------------
+
+weight_loader:
+  type: CheckpointWeightLoader              # ← NoOpWeightLoader | CheckpointWeightLoader | PaliGemmaWeightLoader
+  params_path: gs://openpi-assets/checkpoints/pi05_base/params
+  # ^^^ REQUIRED for CheckpointWeightLoader.
+  # Use a gs:// URL or shared path. Do NOT commit machine-local paths
+  # like /home/<you>/... to configs/_examples/ — those break for everyone else.
+
+# Alternative: load nothing (train from scratch)
+# weight_loader:
+#   type: NoOpWeightLoader
+
+# Alternative: load only the PaliGemma backbone weights
+# weight_loader:
+#   type: PaliGemmaWeightLoader
+
+
+# ---------------------------------------------------------------------------
+# pytorch_weight_path: optional PyTorch ckpt path (for PyTorch training only)
+# ---------------------------------------------------------------------------
+
+pytorch_weight_path: null
+pytorch_training_precision: bfloat16   # bfloat16 | float32
+
+
+# ---------------------------------------------------------------------------
+# lr_schedule: LRScheduleConfig subclass (dispatched by `type:`)
+# Registry: LR_SCHEDULES
+# ---------------------------------------------------------------------------
+
+lr_schedule:
+  type: CosineDecaySchedule
+  warmup_steps: 1000
+  peak_lr: 2.5e-5
+  decay_steps: 30000
+  decay_lr: 2.5e-6
+
+# Alternative: inverse-sqrt decay
+# lr_schedule:
+#   type: RsqrtDecaySchedule
+#   warmup_steps: 1000
+#   peak_lr: 5e-5
+#   timescale: 10000
+
+
+# ---------------------------------------------------------------------------
+# optimizer: OptimizerConfig subclass (dispatched by `type:`)
+# Registry: OPTIMIZERS
+# ---------------------------------------------------------------------------
+
+optimizer:
+  type: AdamW
+  b1: 0.9
+  b2: 0.95
+  eps: 1.0e-8
+  weight_decay: 1.0e-10       # near-zero by design — see comment in optimizer.py
+  clip_gradient_norm: 1.0
+
+# Alternative: plain SGD
+# optimizer:
+#   type: SGD
+#   lr: 5e-5
+#   momentum: 0.9
+#   nesterov: false
+
+
+# ---------------------------------------------------------------------------
+# EMA — exponential moving average of weights
+# ---------------------------------------------------------------------------
+
+ema_decay: 0.99               # 0.99 default; set to null to disable EMA (saves memory)
+
+
+# ---------------------------------------------------------------------------
+# Filesystem layout — usually don't touch
+# ---------------------------------------------------------------------------
+
+assets_base_dir: ./assets         # norm stats etc. go here under <name>/
+checkpoint_base_dir: ./checkpoints  # ckpts go here under <name>/<exp_name>/
+
+
+# ---------------------------------------------------------------------------
+# Training loop
+# ---------------------------------------------------------------------------
+
+seed: 42                      # set this when running ablations
+batch_size: 32                # GLOBAL batch size (not per-device)
+num_workers: 2                # DataLoader workers; bump to 32-64 on H100/A100
+num_train_steps: 30000        # total gradient steps
+
+log_interval: 100             # how often to push metrics to wandb
+save_interval: 1000           # checkpoint cadence
+keep_period: 5000             # keep every Nth checkpoint forever; null = keep none past most recent
+
+overwrite: false              # true ⇒ wipe checkpoints/<name>/<exp> on start
+resume: false                 # true ⇒ resume from latest ckpt (mutex with overwrite)
+
+wandb_enabled: true           # disable for CI / smoke tests
+
+policy_metadata: null         # optional dict[str, Any] forwarded to the policy server
+
+
+# ---------------------------------------------------------------------------
+# Distributed
+# ---------------------------------------------------------------------------
+
+fsdp_devices: 1               # 1 = pure data parallel; >1 = FSDP sharding across N devices
+
+# Memory recipes:
+#   - 1× RTX 4090 (24 GB):   fsdp_devices=1, batch_size=32 (LoRA only for full pi05)
+#   - 8× H100  (640 GB):      fsdp_devices=8, batch_size=256, num_workers=64
+#   - 8× A100  (80 GB each):  fsdp_devices=8, batch_size=128-256
+
+
+# ---------------------------------------------------------------------------
+# freeze_filter — LoRA / partial-weight freezing
+# ---------------------------------------------------------------------------
+#
+# NOT SETTABLE FROM YAML. freeze_filter takes a flax.nnx filter tree
+# (e.g. `nnx.All(PathRegex(".*llm.*"), Not(PathRegex(".*lora.*")))`) which
+# can't be serialized. LoRA-style configs must stay in _CONFIGS for now.
+# See docs/yaml_config_changelog.md for the rationale and open issue.

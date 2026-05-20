@@ -162,6 +162,12 @@ in-flight experiment, put the new file directly under `configs/` (it will be
 gitignored). For something you want to share with the team, put it under
 `configs/_examples/` and open a PR.
 
+**Reference:** [`configs/_examples/_FULL_REFERENCE.yaml`](configs/_examples/_FULL_REFERENCE.yaml)
+lists every `TrainConfig` field, every registered class for each polymorphic
+slot (`model.type`, `data.type`, `weight_loader.type`, etc.), and the current
+default for each value. Open it alongside your real config when you need to
+look up "what does field X do" or "what else can I put in `data.type`".
+
 ```yaml
 # configs/my_task.yaml  (filename stem = config name; do not put `name:` inside)
 

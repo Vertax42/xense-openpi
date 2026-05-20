@@ -64,6 +64,18 @@ fsdp_devices: 8
 The **filename** is the config name — there is no `name:` field inside the
 YAML. `exp_name` is supplied on the CLI (`--exp-name=...`).
 
+## Full reference: `_FULL_REFERENCE.yaml`
+
+[`configs/_examples/_FULL_REFERENCE.yaml`](_examples/_FULL_REFERENCE.yaml) lists
+**every** `TrainConfig` field, every registered class for each polymorphic
+slot, and the current default for each value. Open it alongside the example
+you're editing — it answers "what does field X do" and "what other classes
+can go in `data.type`" without forcing you to read 919 lines of `config.py`.
+
+That file's name starts with `_` on purpose: the test suite skips it for the
+equivalence check (it has no `_CONFIGS` counterpart), but a separate test
+ensures it always parses cleanly so the docs can't silently rot.
+
 ## ⚠️ Before committing a YAML to `_examples/`
 
 Read it once. **Do not check in machine-local absolute paths** such as
