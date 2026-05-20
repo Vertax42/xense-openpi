@@ -32,14 +32,14 @@ import signal
 import sys
 
 from lerobot.utils.robot_utils import get_logger
+from typing_extensions import override
+import tyro
 from xense_client import action_chunk_broker
 from xense_client import rtc_action_chunk_broker
 from xense_client import websocket_client_policy as _websocket_client_policy
 from xense_client.runtime import environment as _environment
 from xense_client.runtime import runtime as _runtime
 from xense_client.runtime.agents import policy_agent as _policy_agent
-from typing_extensions import override
-import tyro
 
 import examples.flexiv_rizon4_rt.env as _env
 

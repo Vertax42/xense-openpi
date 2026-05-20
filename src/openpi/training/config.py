@@ -949,7 +949,7 @@ def get_config(config_name: str) -> TrainConfig:
     """
     yaml_path = _find_yaml_config(config_name)
     if yaml_path is not None:
-        import openpi.training.yaml_loader as _yaml_loader  # noqa: PLC0415
+        import openpi.training.yaml_loader as _yaml_loader
 
         return _yaml_loader.load(yaml_path)
 

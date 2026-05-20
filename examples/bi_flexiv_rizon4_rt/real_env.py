@@ -13,7 +13,8 @@ import time
 import dm_env
 from lerobot.robots.bi_flexiv_rizon4_rt.config_bi_flexiv_rizon4_rt import BiFlexivRizon4RTConfig
 from lerobot.robots.utils import make_robot_from_config
-from lerobot.utils.robot_utils import emergency_stop_flexiv_rt_robot, get_logger
+from lerobot.utils.robot_utils import emergency_stop_flexiv_rt_robot
+from lerobot.utils.robot_utils import get_logger
 import numpy as np
 
 logger = get_logger("BiFlexivRizon4RTRealEnv")

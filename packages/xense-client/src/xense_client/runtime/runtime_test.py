@@ -79,6 +79,4 @@ def test_request_stop_ends_run_promptly():
 
     # 1 episode reset + 1 final reset in run() = 2 total. Episodes 2 and 3
     # were skipped because _stop_requested was set.
-    assert env._reset_count == 2, (
-        f"expected 1 episode + 1 final reset = 2, got {env._reset_count}"
-    )
+    assert env._reset_count == 2, f"expected 1 episode + 1 final reset = 2, got {env._reset_count}"

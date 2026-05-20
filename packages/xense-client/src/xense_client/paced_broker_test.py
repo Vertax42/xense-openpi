@@ -53,6 +53,7 @@ class FakeInternalQueueBroker(base_policy.BasePolicy):
 
     def __init__(self, initial_size: int = 50, refill_period_s: float = 0.4):
         import collections
+
         self._q: "collections.deque" = collections.deque()
         for _ in range(initial_size):
             self._q.append({"actions": 0})
@@ -263,9 +264,7 @@ def test_target_hz_caps_producer_rate():
     time.sleep(1.0)
     pb.stop()
     n_calls = len(inner.calls)
-    assert (
-        25 <= n_calls <= 40
-    ), f"target_hz=30 expected ~30 calls/s, got {n_calls}"
+    assert 25 <= n_calls <= 40, f"target_hz=30 expected ~30 calls/s, got {n_calls}"
 
 
 # ---------------------------------------------------------------------------

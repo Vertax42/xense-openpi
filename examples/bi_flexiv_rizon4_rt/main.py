@@ -33,7 +33,6 @@ Example usage:
 from dataclasses import dataclass
 import os
 import signal
-import sys
 import threading
 
 from lerobot.teleoperators.bi_pico4 import BiPico4
@@ -333,8 +332,7 @@ def main(args: Args) -> None:
 
     if decoupled_mode:
         logger.info(
-            f"Decoupled runtime: obs at ~{args.runtime_hz} Hz (camera-bound), "
-            f"action at {args.action_hz} Hz"
+            f"Decoupled runtime: obs at ~{args.runtime_hz} Hz (camera-bound), " f"action at {args.action_hz} Hz"
         )
         runtime = _decoupled_runtime.DecoupledRuntime(
             environment=environment,
@@ -381,15 +379,10 @@ def main(args: Args) -> None:
 
     def signal_handler(sig, frame):
         if _shutdown_in_progress.is_set():
-            logger.warning(
-                "Second Ctrl+C — forcing exit. Arms may not return home cleanly."
-            )
+            logger.warning("Second Ctrl+C — forcing exit. Arms may not return home cleanly.")
             os._exit(1)
         _shutdown_in_progress.set()
-        logger.info(
-            "Ctrl+C — stopping runtime gracefully "
-            "(press Ctrl+C again to force exit)"
-        )
+        logger.info("Ctrl+C — stopping runtime gracefully " "(press Ctrl+C again to force exit)")
         runtime.request_stop()
 
     signal.signal(signal.SIGINT, signal_handler)

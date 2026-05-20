@@ -136,14 +136,10 @@ class PacedBroker(_base_policy.BasePolicy):
         if self._producer_thread is not None and self._producer_thread.is_alive():
             return
         self._stop_event.clear()
-        self._producer_thread = threading.Thread(
-            target=self._producer_loop, name="PacedBroker-producer", daemon=True
-        )
+        self._producer_thread = threading.Thread(target=self._producer_loop, name="PacedBroker-producer", daemon=True)
         self._producer_thread.start()
         rate_msg = f", target_hz={self._target_hz}" if self._target_hz > 0 else " (unpaced)"
-        logger.info(
-            f"PacedBroker producer thread started (queue_size={self._action_queue.maxsize}{rate_msg})"
-        )
+        logger.info(f"PacedBroker producer thread started (queue_size={self._action_queue.maxsize}{rate_msg})")
 
     def stop(self, join_timeout: float = 2.0) -> None:
         """Signal producer to exit and wait for it. Safe to call multiple times."""

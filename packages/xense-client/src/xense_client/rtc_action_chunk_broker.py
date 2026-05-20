@@ -451,8 +451,7 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
         # Block until Phase 1 (JIT) + Phase 2 (prev_chunk shape) both finish.
         if not self._first_inference_done.wait(timeout=120.0):
             raise RuntimeError(
-                "RTCActionChunkBroker.warmup(): Timed out waiting for JIT "
-                "compilation. Is the policy server running?"
+                "RTCActionChunkBroker.warmup(): Timed out waiting for JIT " "compilation. Is the policy server running?"
             )
         logger.info("Pre-episode warmup complete. First control step will have no JIT delay.")
 
