@@ -396,6 +396,11 @@ python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_shoe_inso
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
     pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100 \
     --exp-name=pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100_0519 --overwrite
+
+python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
+    pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100 \
+    --exp-name=pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100_0520 --overwrite
 ```
 
 #### BiFlexiv - shoe_insole_retrieval_and_packing_1
@@ -464,6 +469,16 @@ python scripts/serve_policy.py \
     policy:checkpoint \
     --policy.config=pi05_base_bi_flexiv_earbuds_case_sequential_insertion_teleop_rtc_0513_h100 \
     --policy.dir=checkpoints/pi05_base_bi_flexiv_earbuds_case_sequential_insertion_teleop_rtc_0513_h100/pi05_base_bi_flexiv_earbuds_case_sequential_insertion_teleop_rtc_0513_h100_0513/19999
+```
+
+#### BiFlexiv - shoe_insole_retrieval_and_packing_0 inference
+
+```bash
+python scripts/serve_policy.py \
+    --default-prompt="retrieve the shoe insole from the box and pack it into the shoe" \
+    policy:checkpoint \
+    --policy.config=pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100 \
+    --policy.dir=checkpoints/pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100/pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100_0519/39999
 ```
 
 ### Running the robot client
