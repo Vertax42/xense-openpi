@@ -500,10 +500,10 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
 #### BiFlexiv - shoe_insole_retrieval_and_packing_1
 
 ```bash
-python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_newbalacne_shoe_insole_retrieval_and_packing_0515_h100
+python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_newbalacne_shoe_insole_retrieval_and_packing_0520_h100
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
-    pi05_base_bi_flexiv_newbalacne_shoe_insole_retrieval_and_packing_0515_h100 \
-    --exp-name=pi05_base_bi_flexiv_newbalacne_shoe_insole_retrieval_and_packing_0515_h100_0517 --overwrite
+    pi05_base_bi_flexiv_newbalacne_shoe_insole_retrieval_and_packing_0520_h100 \
+    --exp-name=pi05_base_bi_flexiv_newbalacne_shoe_insole_retrieval_and_packing_0520_h100_0522 --overwrite
 ```
 
 ### Deployment Commands (latest per platform)
@@ -553,7 +553,7 @@ python scripts/serve_policy.py \
     --default-prompt="assemble the box with the phone stand" \
     policy:checkpoint \
     --policy.config=pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0430_merged_fixed_h100 \
-    --policy.dir=checkpoints/pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0430_merged_fixed_h100/pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0430_merged_fixed_h100_0510/79999
+    --policy.dir=checkpoints/pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0430_merged_fixed_h100/pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0430_merged_fixed_h100_0510/66000
 ```
 
 #### BiFlexiv — earbuds case assembly with lid operation inference
@@ -573,6 +573,14 @@ python scripts/serve_policy.py \
     policy:checkpoint \
     --policy.config=pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100 \
     --policy.dir=checkpoints/pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100/pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100_0519/39999
+```
+
+```bash
+python scripts/serve_policy.py \
+    --default-prompt="retrieve the shoe insole from the box and pack it into the shoe" \
+    policy:checkpoint \
+    --policy.config=pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100 \
+    --policy.dir=checkpoints/pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100/pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100_0520/39999
 ```
 
 ### Running the robot client
