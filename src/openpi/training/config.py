@@ -879,7 +879,7 @@ _CONFIGS = [
         ema_decay=None,
         batch_size=256,
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
-        num_train_steps=60_000,
+        num_train_steps=40_000,
         num_workers=64,
         fsdp_devices=8,
     ),
