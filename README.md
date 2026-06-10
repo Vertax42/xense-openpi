@@ -583,6 +583,16 @@ python scripts/serve_policy.py \
     --policy.dir=checkpoints/pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100/pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100_0520/39999
 ```
 
+#### BiFlexiv - newbalance_shoe_insole_retrieval_and_packing_0606 inference
+
+```bash
+python scripts/serve_policy.py \
+    --default-prompt="Take the shoe out of the shoebox, open the shoe tongue, remove and reinsert the insole, then place the shoe into the shoebox." \
+    policy:checkpoint \
+    --policy.config=pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0607_h100 \
+    --policy.dir=checkpoints/pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0607_h100/pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0607_h100_0607/59999
+```
+
 ### Running the robot client
 
 ```bash
