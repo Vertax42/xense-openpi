@@ -500,10 +500,10 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
 #### BiFlexiv - shoe_insole_retrieval_and_packing_1
 
 ```bash
-python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_newbalacne_shoe_insole_retrieval_and_packing_0520_h100
+python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_newbalacne_shoe_insole_retrieval_and_packing_0606_h100
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
-    pi05_base_bi_flexiv_newbalacne_shoe_insole_retrieval_and_packing_0520_h100 \
-    --exp-name=pi05_base_bi_flexiv_newbalacne_shoe_insole_retrieval_and_packing_0520_h100_0522 --overwrite
+    pi05_base_bi_flexiv_newbalacne_shoe_insole_retrieval_and_packing_0606_h100 \
+    --exp-name=pi05_base_bi_flexiv_newbalacne_shoe_insole_retrieval_and_packing_0606_h100_0606 --overwrite
 ```
 
 ### Deployment Commands (latest per platform)
