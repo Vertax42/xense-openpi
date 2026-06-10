@@ -491,10 +491,10 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
     pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100 \
     --exp-name=pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100_0519 --overwrite
 
-python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100
+python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0607_h100
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
-    pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100 \
-    --exp-name=pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100_0520 --overwrite
+    pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0607_h100 \
+    --exp-name=pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0607_h100_0607 --overwrite
 ```
 
 #### BiFlexiv - shoe_insole_retrieval_and_packing_1
