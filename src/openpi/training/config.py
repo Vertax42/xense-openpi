@@ -908,6 +908,30 @@ _CONFIGS = [
         fsdp_devices=8,
     ),
     TrainConfig(
+        name="pi05_base_bi_flexiv_bag_inspection_0611_h100",
+        model=pi0_config.Pi0Config(
+            paligemma_variant="gemma_2b",
+            action_expert_variant="gemma_300m",
+            pi05=True,
+            enable_training_time_rtc=True,
+            max_delay=10,
+        ),
+        data=LeRobotBiFlexivDataConfig(
+            repo_id="Xense/dewu_bag_inspection_0611",
+            use_delta_cartesian_actions=True,
+            default_prompt="Pick up the bag, open it, inspect its contents, close it, and place it on the opposite side.",
+            base_config=DataConfig(
+                prompt_from_task=True,
+            ),
+        ),
+        ema_decay=None,
+        batch_size=256,
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
+        num_train_steps=60_000,
+        num_workers=64,
+        fsdp_devices=8,
+    ),
+    TrainConfig(
         name="debug_pi05",
         model=pi0_config.Pi0Config(pi05=True, paligemma_variant="dummy", action_expert_variant="dummy"),
         data=FakeDataConfig(),
