@@ -4,10 +4,10 @@ import logging
 import time
 import traceback
 
-from xense_client import base_policy as _base_policy
-from xense_client import msgpack_numpy
 import websockets.asyncio.server as _server
 import websockets.frames
+from xense_client import base_policy as _base_policy
+from xense_client import msgpack_numpy
 
 logger = logging.getLogger(__name__)
 

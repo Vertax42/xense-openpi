@@ -30,10 +30,16 @@ class Runtime:
 
         self._in_episode = False
         self._episode_steps = 0
+        # Set by request_stop() so a SIGINT during episode N doesn't kick off
+        # episode N+1. Checked between episodes in run().
+        self._stop_requested = False
 
     def run(self) -> None:
         """Runs the runtime loop continuously until stop() is called or the environment is done."""
+        self._stop_requested = False
         for _ in range(self._num_episodes):
+            if self._stop_requested:
+                break
             self._run_episode()
 
         # Final reset, this is important for real environments to move the robot to its home position.
@@ -48,6 +54,17 @@ class Runtime:
     def mark_episode_complete(self) -> None:
         """Marks the end of an episode."""
         self._in_episode = False
+
+    def request_stop(self) -> None:
+        """Request a graceful runtime shutdown.
+
+        Ends the current episode and prevents subsequent episodes from
+        starting. Intended for SIGINT handlers — letting run() return
+        naturally so the caller's finally clause can disconnect cleanly
+        (including the home-position move).
+        """
+        self._stop_requested = True
+        self.mark_episode_complete()
 
     def _run_episode(self) -> None:
         """Runs a single episode."""

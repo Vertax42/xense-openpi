@@ -31,8 +31,9 @@ Example usage:
 """
 
 from dataclasses import dataclass
+import os
 import signal
-import sys
+import threading
 
 from lerobot.teleoperators.bi_pico4 import BiPico4
 from lerobot.teleoperators.bi_pico4.config_bi_pico4 import BiPico4Config
@@ -40,8 +41,10 @@ from lerobot.utils.robot_utils import get_logger
 from typing_extensions import override
 import tyro
 from xense_client import action_chunk_broker
+from xense_client import paced_broker as _paced_broker
 from xense_client import rtc_action_chunk_broker
 from xense_client import websocket_client_policy as _websocket_client_policy
+from xense_client.runtime import decoupled_runtime as _decoupled_runtime
 from xense_client.runtime import environment as _environment
 from xense_client.runtime import runtime as _runtime
 from xense_client.runtime.agents import policy_agent as _policy_agent
@@ -180,6 +183,13 @@ class Args:
     blend_steps: int = 0
     default_delay: int = 4
 
+    # Decoupled mode: action thread emits at action_hz independently of the
+    # obs loop (which is pinned to camera FPS). 0 = disabled (legacy single-
+    # threaded Runtime). When enabled, RTC's frequency_hz tracks action_hz
+    # so its delay estimation stays consistent with reality.
+    action_hz: float = 0.0
+    paced_queue_size: int = 50
+
     # Recording (LeRobot format, raw 640x480 images + absolute actions)
     record: bool = False
     record_repo_id: str = "Xense/recorded_dataset"
@@ -201,6 +211,16 @@ def main(args: Args) -> None:
         raise SystemExit(
             "--pico4_intervention is not supported with --rtc_enabled in this release. "
             "Run without --rtc_enabled, or disable intervention."
+        )
+
+    decoupled_mode = args.action_hz > 0
+    if decoupled_mode and args.pico4_intervention:
+        # DecoupledRuntime spawns an action thread that pops from a queue the
+        # producer keeps filling. Switching control to teleop mid-stream would
+        # require draining the queue race-free across three threads — defer.
+        raise SystemExit(
+            "--pico4_intervention is not supported with --action_hz > 0 in this release. "
+            "Run with --action_hz 0 (synchronous runtime) when intervention is needed."
         )
 
     ws_client_policy = _websocket_client_policy.WebsocketClientPolicy(
@@ -244,10 +264,15 @@ def main(args: Args) -> None:
         subscribers.append(recorder)
         logger.info(f"Recording enabled: repo_id={args.record_repo_id}, task='{args.task}'")
 
+    # In decoupled mode the broker is popped at action_hz, not runtime_hz —
+    # RTC's internal delay/blend math reads frequency_hz to estimate
+    # per-step elapsed time, so it must match the actual pop rate.
+    effective_broker_hz = args.action_hz if decoupled_mode else args.runtime_hz
+
     if args.rtc_enabled:
         policy = rtc_action_chunk_broker.RTCActionChunkBroker(
             policy=ws_client_policy,
-            frequency_hz=args.runtime_hz,
+            frequency_hz=effective_broker_hz,
             action_queue_size_to_get_new_actions=args.action_queue_size_to_get_new_actions,
             rtc_enabled=args.rtc_enabled,
             execution_horizon=args.execution_horizon,
@@ -269,6 +294,23 @@ def main(args: Args) -> None:
             action_horizon=args.action_horizon,
         )
 
+    if decoupled_mode:
+        # Wrap whichever broker we just built; the PacedBroker presents the
+        # same BasePolicy contract to anything else but adds submit_obs /
+        # pop_action / start / stop for DecoupledRuntime.
+        #
+        # target_hz=action_hz throttles the producer to the consumer rate.
+        # Without it, the producer drains an internal broker queue (RTC has
+        # one) faster than its background inference can refill, generating
+        # "Action queue exhausted" warning spam during startup. For non-RTC
+        # the queue.put back-pressure already paces things, but matching the
+        # consumer rate is still the right default.
+        policy = _paced_broker.PacedBroker(
+            inner=policy,
+            queue_size=args.paced_queue_size,
+            target_hz=args.action_hz,
+        )
+
     intervention_controller: _intervention.Pico4InterventionController | None = None
     if args.pico4_intervention:
         teleop = BiPico4(
@@ -288,14 +330,28 @@ def main(args: Args) -> None:
     else:
         agent = _policy_agent.PolicyAgent(policy=policy)
 
-    runtime = _runtime.Runtime(
-        environment=environment,
-        agent=agent,
-        subscribers=subscribers,
-        max_hz=args.runtime_hz,
-        num_episodes=args.num_episodes,
-        max_episode_steps=args.max_episode_steps,
-    )
+    if decoupled_mode:
+        logger.info(
+            f"Decoupled runtime: obs at ~{args.runtime_hz} Hz (camera-bound), " f"action at {args.action_hz} Hz"
+        )
+        runtime = _decoupled_runtime.DecoupledRuntime(
+            environment=environment,
+            broker=policy,  # PacedBroker
+            subscribers=subscribers,
+            obs_hz=args.runtime_hz,
+            action_hz=args.action_hz,
+            num_episodes=args.num_episodes,
+            max_episode_steps=args.max_episode_steps,
+        )
+    else:
+        runtime = _runtime.Runtime(
+            environment=environment,
+            agent=agent,
+            subscribers=subscribers,
+            max_hz=args.runtime_hz,
+            num_episodes=args.num_episodes,
+            max_episode_steps=args.max_episode_steps,
+        )
 
     def safe_disconnect() -> None:
         try:
@@ -313,10 +369,21 @@ def main(args: Args) -> None:
         except Exception as e:
             logger.warning(f"Error disconnecting: {e}")
 
+    # SIGINT handling: first press asks the runtime to wind down threads
+    # cleanly (DecoupledRuntime joins its action + obs threads here, ~0.5 s);
+    # main's `finally` then runs safe_disconnect, which homes the arms via
+    # MoveJ before releasing the SDK — same end-state as the original
+    # synchronous runtime. A second Ctrl+C while shutdown is in progress
+    # escapes to os._exit, accepting that the arms may not return home.
+    _shutdown_in_progress = threading.Event()
+
     def signal_handler(sig, frame):
-        logger.info("Ctrl+C detected, disconnecting...")
-        safe_disconnect()
-        sys.exit(0)
+        if _shutdown_in_progress.is_set():
+            logger.warning("Second Ctrl+C — forcing exit. Arms may not return home cleanly.")
+            os._exit(1)
+        _shutdown_in_progress.set()
+        logger.info("Ctrl+C — stopping runtime gracefully " "(press Ctrl+C again to force exit)")
+        runtime.request_stop()
 
     signal.signal(signal.SIGINT, signal_handler)
 

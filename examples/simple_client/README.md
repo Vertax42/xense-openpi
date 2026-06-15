@@ -5,7 +5,7 @@ A minimal client that sends observations to the server and prints the inference 
 You can specify which runtime environment to use using the `--env` flag. You can see the available options by running:
 
 ```bash
-uv run examples/simple_client/main.py --help
+python examples/simple_client/main.py --help
 ```
 
 ## With Docker
@@ -20,11 +20,11 @@ docker compose -f examples/simple_client/compose.yml up --build
 Terminal window 1:
 
 ```bash
-uv run examples/simple_client/main.py --env DROID
+python examples/simple_client/main.py --env DROID
 ```
 
 Terminal window 2:
 
 ```bash
-uv run scripts/serve_policy.py --env DROID
+python scripts/serve_policy.py --env DROID
 ```

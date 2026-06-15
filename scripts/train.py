@@ -270,7 +270,7 @@ def main(config: _config.TrainConfig):
 
     infos = []
     # --- stall diagnostics ---
-    STALL_THRESHOLD_S = 3.0  # log a warning when any phase exceeds this
+    stall_threshold_s = 3.0  # log a warning when any phase exceeds this
     t_prev_loop_end = time.monotonic()
     for step in pbar:
         t_loop_start = time.monotonic()
@@ -305,8 +305,12 @@ def main(config: _config.TrainConfig):
 
         t_total = time.monotonic() - t_loop_start
         # Warn on any slow phase OR any slow overall step
-        if (t_total > STALL_THRESHOLD_S or t_next_batch > STALL_THRESHOLD_S
-                or t_dispatch > STALL_THRESHOLD_S or t_ckpt > STALL_THRESHOLD_S):
+        if (
+            t_total > stall_threshold_s
+            or t_next_batch > stall_threshold_s
+            or t_dispatch > stall_threshold_s
+            or t_ckpt > stall_threshold_s
+        ):
             pbar.write(
                 f"[STALL step={step}] total={t_total:.2f}s "
                 f"dispatch={t_dispatch:.2f}s next_batch={t_next_batch:.2f}s "

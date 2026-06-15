@@ -31,7 +31,7 @@ pip install -e /path/to/lerobot-xense
 ## Start Policy Server
 
 ```bash
-uv run scripts/serve_policy.py \
+python scripts/serve_policy.py \
     policy:checkpoint \
     --policy.config=pi05_base_xense_flare_pick_and_place_cube \
     --policy.dir=checkpoints/your_checkpoint

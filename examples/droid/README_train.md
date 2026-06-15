@@ -10,7 +10,7 @@ for larger datasets like DROID -- they are working on improving it though). Belo
 
 We need a few additional dependencies for RLDS data loading. Run:
 ```bash
-uv sync --group rlds
+pip install -e ".[rlds]"
 ```
 
 ## Download DROID dataset
@@ -30,12 +30,12 @@ First, change the `rlds_data_dir` path in your `TrainConfig` to the directory th
 
 Then, compute normalization statistics (this will take ~10 minutes):
 ```bash
-uv run --group rlds scripts/compute_norm_stats.py --config-name pi05_full_droid_finetune --max-frames 10_000_000
+python scripts/compute_norm_stats.py --config-name pi05_full_droid_finetune --max-frames 10_000_000
 ```
 
 Run training:
 ```bash
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 uv run --group rlds scripts/train.py pi05_full_droid_finetune --exp-name=my_experiment --overwrite
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py pi05_full_droid_finetune --exp-name=my_experiment --overwrite
 ```
 
 **Note**: The original pi0.5-DROID model was trained with joint velocity actions.
@@ -89,7 +89,7 @@ For your own dataset, make sure that each episode's directory contains a folder 
 
 Now, we will use the `convert_droid_to_lerobot.py` script to create a LeRobot version of this dataset (takes <5min for the 30 demonstrations):
 ```
-uv run examples/droid/convert_droid_data_to_lerobot.py --data_dir <your_target_path>
+python examples/droid/convert_droid_data_to_lerobot.py --data_dir <your_target_path>
 ```
 
 ## Step 2: Run fine-tuning with your custom dataset
@@ -99,7 +99,7 @@ You can modify the config easily to work with other base models, or use your cus
 
 To launch training:
 ```
-uv run scripts/train.py pi05_droid_finetune --exp-name=my_experiment --overwrite
+python scripts/train.py pi05_droid_finetune --exp-name=my_experiment --overwrite
 ```
 
 Once trained, you can follow the instructions in [`examples/droid/README.md`](examples/droid/README.md) to serve the policy and run it on the robot.

@@ -127,7 +127,7 @@ class ActionQueue:
         with self.lock:
             if self.original_queue is None:
                 return None
-            left_over = self.original_queue[self.last_index:]
+            left_over = self.original_queue[self.last_index :]
 
             if fixed_length <= 0 or len(left_over) == 0:
                 return left_over

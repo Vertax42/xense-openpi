@@ -178,8 +178,7 @@ def ensure_lerobot_meta_and_parquet(
 
     if not info_json.is_file():
         raise FileNotFoundError(
-            f"After snapshot_download, expected {info_json}. "
-            "Check repo_id, HF_TOKEN (private), and network."
+            f"After snapshot_download, expected {info_json}. " "Check repo_id, HF_TOKEN (private), and network."
         )
     if not _has_parquet_under(data_dir):
         raise FileNotFoundError(f"No parquet files under {data_dir} after download.")

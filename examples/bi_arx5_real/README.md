@@ -223,7 +223,7 @@ This environment is compatible with models trained using the lerobot framework o
 Example with custom model:
 ```bash
 # Terminal 1: Start server with custom model
-uv run scripts/serve_policy.py \
+python scripts/serve_policy.py \
     --policy_path=/path/to/your/model \
     --default_prompt='your task description'
 

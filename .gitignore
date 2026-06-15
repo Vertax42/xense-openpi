@@ -4,6 +4,12 @@ checkpoints/
 data/
 wandb/
 
+# Per-user training config YAMLs live in configs/ and are not version controlled.
+# Shared examples in configs/_examples/ are tracked normally.
+configs/*.yaml
+!configs/_examples/
+!configs/README.md
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

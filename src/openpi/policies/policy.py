@@ -9,9 +9,9 @@ import flax.traverse_util
 import jax
 import jax.numpy as jnp
 import numpy as np
-from xense_client import base_policy as _base_policy
 import torch
 from typing_extensions import override
+from xense_client import base_policy as _base_policy
 
 from openpi import transforms as _transforms
 from openpi.models import model as _model

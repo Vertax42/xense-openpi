@@ -13,7 +13,8 @@ import time
 import dm_env
 from lerobot.robots.bi_flexiv_rizon4_rt.config_bi_flexiv_rizon4_rt import BiFlexivRizon4RTConfig
 from lerobot.robots.utils import make_robot_from_config
-from lerobot.utils.robot_utils import emergency_stop_flexiv_rt_robot, get_logger
+from lerobot.utils.robot_utils import emergency_stop_flexiv_rt_robot
+from lerobot.utils.robot_utils import get_logger
 import numpy as np
 
 logger = get_logger("BiFlexivRizon4RTRealEnv")
@@ -136,13 +137,53 @@ class BiFlexivRizon4RTRealEnv:
         )
 
     def step(self, action: np.ndarray) -> dm_env.TimeStep:
-        """Execute 20D action on both arms.
+        """Execute 20D action on both arms (dm_env step semantics).
+
+        Sends the action and returns a TimeStep including the resulting
+        observation. The wrapper in env.py no longer uses this path —
+        it calls send_action() and get_observation() independently so
+        an outer loop (e.g. DecoupledRuntime's obs/action threads) can
+        run them on different schedules. Kept for backward compatibility
+        with code that expects dm_env semantics.
+
+        Args:
+            action: [left_tcp(0-8), right_tcp(9-17), left_gripper(18), right_gripper(19)]
+        """
+        self.send_action(action)
+        obs = self.get_observation()
+
+        return dm_env.TimeStep(
+            step_type=dm_env.StepType.MID,
+            reward=self.get_reward(),
+            discount=None,
+            observation=obs,
+        )
+
+    def send_action(self, action: np.ndarray) -> None:
+        """Send a 20D action to the robot. Does NOT read observations.
+
+        Use this when an outer loop reads observations independently. By
+        keeping send + read separate, the action thread isn't pinned to the
+        camera frame rate — critical for DecoupledRuntime where the action
+        thread must run at action_hz (e.g. 60 Hz) while observations run at
+        camera FPS (~30 Hz).
 
         Args:
             action: [left_tcp(0-8), right_tcp(9-17), left_gripper(18), right_gripper(19)]
         """
         import time as _time
 
+        action_dict = self._build_action_dict(action)
+        t0 = _time.time()
+        try:
+            self.robot.send_action(action_dict)
+        except Exception as e:
+            logger.error(f"Failed to send action: {e}")
+            raise
+        logger.debug(f"send_action: {(_time.time() - t0) * 1000:.2f}ms")
+
+    def _build_action_dict(self, action: np.ndarray) -> dict:
+        """Build the per-key action dict that BiFlexivRizon4RT.send_action expects."""
         action_dict = {}
         # Left TCP (0-8)
         action_dict["left_tcp.x"] = float(action[0])
@@ -159,29 +200,7 @@ class BiFlexivRizon4RTRealEnv:
         # Grippers (18, 19)
         action_dict["left_gripper.pos"] = float(np.clip(action[18], 0.0, 1.0))
         action_dict["right_gripper.pos"] = float(np.clip(action[19], 0.0, 1.0))
-
-        t0 = _time.time()
-        try:
-            self.robot.send_action(action_dict)
-        except Exception as e:
-            logger.error(f"Failed to send action: {e}")
-            raise
-        t1 = _time.time()
-
-        obs = self.get_observation()
-        t2 = _time.time()
-
-        logger.debug(
-            f"step(): send_action={((t1-t0)*1000):.2f}ms | "
-            f"get_obs={((t2-t1)*1000):.2f}ms"
-        )
-
-        return dm_env.TimeStep(
-            step_type=dm_env.StepType.MID,
-            reward=self.get_reward(),
-            discount=None,
-            observation=obs,
-        )
+        return action_dict
 
     def disconnect(self) -> None:
         """Disconnect both arms, grippers, and cameras."""

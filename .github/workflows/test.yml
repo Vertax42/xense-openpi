@@ -3,29 +3,54 @@ on:
   pull_request:
     branches:
       - "*"
+  push:
+    branches:
+      - main
 
 jobs:
-  run_tests:
-    name: Run Tests
-    runs-on: openpi-verylarge
+  yaml-config-tests:
+    name: YAML config loader tests (CPU-only)
+    runs-on: ubuntu-latest
     env:
-      GIT_LFS_SKIP_SMUDGE: true
+      GIT_LFS_SKIP_SMUDGE: "1"
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-      - name: Install FFmpeg dependencies
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      # Install just what the YAML loader smoke test needs. The full openpi
+      # install pulls JAX + Torch + Transformers etc. which is overkill for a
+      # YAML schema check and slow enough to flake out the runner.
+      - name: Install minimal deps
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg libavcodec-dev libavformat-dev libavutil-dev
+          python -m pip install --upgrade pip
+          python -m pip install "omegaconf>=2.3.0"
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+      # Doesn't import openpi (would need jax/torch). Just validates that every
+      # YAML in configs/_examples/ parses and has the expected polymorphic
+      # discriminators. The full pytest suite needs a GPU env and runs there.
+      - name: Smoke-test YAML examples
+        run: |
+          python - <<'PY'
+          import pathlib
+          from omegaconf import OmegaConf
 
-      - name: Set up Python
-        run: uv python install
-
-      - name: Install the project
-        run: uv sync --all-extras --dev
-
-      - name: Run tests
-        run: uv run pytest --strict-markers -m "not manual"
+          examples = sorted(pathlib.Path("configs/_examples").glob("*.yaml"))
+          assert examples, "no example YAMLs found"
+          for p in examples:
+              cfg = OmegaConf.load(str(p))
+              assert "model" in cfg, f"{p.name}: missing 'model'"
+              assert "type" in cfg.model, f"{p.name}: model missing 'type'"
+              # debug_pi05 omits 'data' (it equals the default FakeDataConfig)
+              if p.stem != "debug_pi05":
+                  assert "data" in cfg, f"{p.name}: missing 'data'"
+                  assert "type" in cfg.data, f"{p.name}: data missing 'type'"
+              print(f"  ok: {p.name}")
+          print(f"\nValidated {len(examples)} example YAMLs.")
+          PY

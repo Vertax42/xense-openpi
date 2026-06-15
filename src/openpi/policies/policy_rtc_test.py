@@ -1,9 +1,9 @@
 import numpy as np
 
+from openpi import transforms as _transforms
 from openpi.models import model as _model
 from openpi.policies import bi_flexiv_policy
 from openpi.policies import policy as _policy
-from openpi import transforms as _transforms
 
 
 class _CaptureModel(_model.BaseModel):

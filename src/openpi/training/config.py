@@ -695,7 +695,7 @@ _CONFIGS = [
         name="pi05_base_bi_flexiv_pack_6_cosmetic_bottles_lora",
         model=pi0_config.Pi0Config(
             paligemma_variant="gemma_2b_lora",
-            action_expert_variant="gemma_300m",
+            action_expert_variant="gemma_300m_lora",
             pi05=True,
             enable_training_time_rtc=True,
             max_delay=10,
@@ -712,7 +712,7 @@ _CONFIGS = [
         freeze_filter=pi0_config.Pi0Config(
             pi05=True,
             paligemma_variant="gemma_2b_lora",
-            # action_expert_variant="gemma_300m_lora",
+            action_expert_variant="gemma_300m_lora",
         ).get_freeze_filter(),
         batch_size=64,
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
@@ -721,16 +721,16 @@ _CONFIGS = [
         fsdp_devices=1,
     ),
     TrainConfig(
-        name="pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0403",
+        name="pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0430_merged_fixed_h100",
         model=pi0_config.Pi0Config(
-            paligemma_variant="gemma_2b_lora",
+            paligemma_variant="gemma_2b",
             action_expert_variant="gemma_300m",
             pi05=True,
             enable_training_time_rtc=True,
             max_delay=10,
         ),
         data=LeRobotBiFlexivDataConfig(
-            repo_id="Xense/assemble_box_with_phone_stand",
+            repo_id="Xense/assemble_box_with_phone_stand0430_merged",
             use_delta_cartesian_actions=True,
             default_prompt="Assemble the packaging by folding the flat box into shape, placing the metal phone stand inside, and closing the box properly.",
             base_config=DataConfig(
@@ -738,16 +738,11 @@ _CONFIGS = [
             ),
         ),
         ema_decay=None,
-        freeze_filter=pi0_config.Pi0Config(
-            pi05=True,
-            paligemma_variant="gemma_2b_lora",
-            # action_expert_variant="gemma_300m_lora",
-        ).get_freeze_filter(),
-        batch_size=64,
+        batch_size=256,
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
-        num_train_steps=20_000,
-        num_workers=2,
-        fsdp_devices=1,
+        num_train_steps=80000,
+        num_workers=64,
+        fsdp_devices=8,
     ),
     TrainConfig(
         name="pi05_base_bi_flexiv_assemble_box_with_phone_stand_lora_0422_merged_fixed_h100",
@@ -815,6 +810,128 @@ _CONFIGS = [
         fsdp_devices=8,
     ),
     TrainConfig(
+        name="pi05_base_bi_flexiv_earbuds_case_insertion_teleop_rtc_0520_a100",
+        model=pi0_config.Pi0Config(
+            paligemma_variant="gemma_2b",
+            action_expert_variant="gemma_300m",
+            pi05=True,
+            enable_training_time_rtc=True,
+            max_delay=10,
+        ),
+        data=LeRobotBiFlexivDataConfig(
+            repo_id="Xense/earbud_case_insertion_teleop_0515",
+            use_delta_cartesian_actions=True,
+            default_prompt="Pick up each earbud case from the left stands, insert the matching earbuds, close the lid, and place the case in the box.",
+            base_config=DataConfig(
+                prompt_from_task=True,  # Set to True for prompt by task_name
+            ),
+        ),
+        save_interval=5000,
+        keep_period=20000,
+        ema_decay=None,
+        batch_size=256,
+        weight_loader=weight_loaders.CheckpointWeightLoader("/home/li/hubo/xense-openpi/checkpoints/20000/params"),
+        num_train_steps=20000,
+        num_workers=64,
+        fsdp_devices=8,
+    ),
+    TrainConfig(
+        name="pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0515_h100",
+        model=pi0_config.Pi0Config(
+            paligemma_variant="gemma_2b",
+            action_expert_variant="gemma_300m",
+            pi05=True,
+            enable_training_time_rtc=True,
+            max_delay=10,
+        ),
+        data=LeRobotBiFlexivDataConfig(
+            repo_id="Xense/shoe_insole_retrieval_and_packing0515",
+            use_delta_cartesian_actions=True,
+            default_prompt="Open the shoe tongue, take the insole out of the shoe, put the insole back into the shoe, and pack the shoe into the shoebox.",
+            base_config=DataConfig(
+                prompt_from_task=True,
+            ),
+        ),
+        ema_decay=None,
+        batch_size=256,
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
+        num_train_steps=40_000,
+        num_workers=64,
+        fsdp_devices=8,
+    ),
+    TrainConfig(
+        name="pi05_base_bi_flexiv_newbalacne_shoe_insole_retrieval_and_packing_0606_h100",
+        model=pi0_config.Pi0Config(
+            paligemma_variant="gemma_2b",
+            action_expert_variant="gemma_300m",
+            pi05=True,
+            enable_training_time_rtc=True,
+            max_delay=10,
+        ),
+        data=LeRobotBiFlexivDataConfig(
+            repo_id="Xense/newbalance_shoe_insole_retrieval_and_packing_0604",
+            use_delta_cartesian_actions=True,
+            default_prompt="Take the shoe out of the shoebox, open the shoe tongue, remove and reinsert the insole, then place the shoe into the shoebox.",
+            base_config=DataConfig(
+                prompt_from_task=True,
+            ),
+        ),
+        ema_decay=None,
+        batch_size=256,
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
+        num_train_steps=40_000,
+        num_workers=64,
+        fsdp_devices=8,
+    ),
+    TrainConfig(
+        name="pi05_base_bi_flexiv_shoe_insole_retrieval_and_packing_0607_h100",
+        model=pi0_config.Pi0Config(
+            paligemma_variant="gemma_2b",
+            action_expert_variant="gemma_300m",
+            pi05=True,
+            enable_training_time_rtc=True,
+            max_delay=10,
+        ),
+        data=LeRobotBiFlexivDataConfig(
+            repo_id="Xense/huili_shoe_insole_retrieval_and_packing_0602",
+            use_delta_cartesian_actions=True,
+            default_prompt="Take the shoe out of the shoebox, open the shoe tongue, remove and reinsert the insole, then place the shoe into the shoebox.",
+            base_config=DataConfig(
+                prompt_from_task=True,
+            ),
+        ),
+        ema_decay=None,
+        batch_size=256,
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
+        num_train_steps=60_000,
+        num_workers=64,
+        fsdp_devices=8,
+    ),
+    TrainConfig(
+        name="pi05_base_bi_flexiv_bag_inspection_0611_h100",
+        model=pi0_config.Pi0Config(
+            paligemma_variant="gemma_2b",
+            action_expert_variant="gemma_300m",
+            pi05=True,
+            enable_training_time_rtc=True,
+            max_delay=10,
+        ),
+        data=LeRobotBiFlexivDataConfig(
+            repo_id="Xense/dewu_bag_inspection_0611",
+            use_delta_cartesian_actions=True,
+            default_prompt="Pick up the bag, open it, inspect its contents, close it, and place it on the opposite side.",
+            base_config=DataConfig(
+                prompt_from_task=True,
+            ),
+        ),
+        ema_decay=None,
+        batch_size=256,
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
+        num_train_steps=60_000,
+        num_workers=64,
+        fsdp_devices=8,
+    ),
+    TrainConfig(
         name="debug_pi05",
         model=pi0_config.Pi0Config(pi05=True, paligemma_variant="dummy", action_expert_variant="dummy"),
         data=FakeDataConfig(),
@@ -836,15 +953,57 @@ if len({config.name for config in _CONFIGS}) != len(_CONFIGS):
 _CONFIGS_DICT = {config.name: config for config in _CONFIGS}
 
 
+# YAML lookup paths, in priority order. First match wins.
+# - configs/<name>.yaml         per-user, gitignored, for your in-flight experiments
+# - configs/_examples/<name>.yaml  checked into git, canonical examples for the team
+_YAML_SEARCH_DIRS: tuple[pathlib.Path, ...] = (
+    pathlib.Path("configs"),
+    pathlib.Path("configs") / "_examples",
+)
+
+
+def _find_yaml_config(config_name: str) -> pathlib.Path | None:
+    """Look for configs/<name>.yaml first, then configs/_examples/<name>.yaml."""
+    repo_root = pathlib.Path(__file__).resolve().parents[3]
+    for relative in _YAML_SEARCH_DIRS:
+        candidate = repo_root / relative / f"{config_name}.yaml"
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _known_config_names() -> list[str]:
+    """All names available via either _CONFIGS or YAML files. For 'did you mean' hints."""
+    names = set(_CONFIGS_DICT.keys())
+    repo_root = pathlib.Path(__file__).resolve().parents[3]
+    for relative in _YAML_SEARCH_DIRS:
+        directory = repo_root / relative
+        if directory.is_dir():
+            names.update(p.stem for p in directory.glob("*.yaml"))
+    return sorted(names)
+
+
 def cli() -> TrainConfig:
     return tyro.extras.overridable_config_cli({k: (k, v) for k, v in _CONFIGS_DICT.items()})
 
 
 def get_config(config_name: str) -> TrainConfig:
-    """Get a config by name."""
-    if config_name not in _CONFIGS_DICT:
-        closest = difflib.get_close_matches(config_name, _CONFIGS_DICT.keys(), n=1, cutoff=0.0)
-        closest_str = f" Did you mean '{closest[0]}'? " if closest else ""
-        raise ValueError(f"Config '{config_name}' not found.{closest_str}")
+    """Get a config by name.
 
-    return _CONFIGS_DICT[config_name]
+    Lookup order:
+      1. configs/<name>.yaml          (per-user, gitignored)
+      2. configs/_examples/<name>.yaml (shared examples in git)
+      3. _CONFIGS_DICT[name]           (legacy Python registry)
+    """
+    yaml_path = _find_yaml_config(config_name)
+    if yaml_path is not None:
+        import openpi.training.yaml_loader as _yaml_loader
+
+        return _yaml_loader.load(yaml_path)
+
+    if config_name in _CONFIGS_DICT:
+        return _CONFIGS_DICT[config_name]
+
+    closest = difflib.get_close_matches(config_name, _known_config_names(), n=1, cutoff=0.0)
+    closest_str = f" Did you mean '{closest[0]}'? " if closest else ""
+    raise ValueError(f"Config '{config_name}' not found.{closest_str}")

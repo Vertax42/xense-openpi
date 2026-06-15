@@ -44,7 +44,7 @@ Then use `--host 10.142.1.1` when launching the robot client.
 
 ```bash
 cd ~/openpi
-uv run scripts/serve_policy.py policy:checkpoint \
+python scripts/serve_policy.py policy:checkpoint \
     --policy.config=pi05_base_bi_flexiv_pack_6_cosmetic_bottles_lora \
     --policy.dir=<checkpoint_dir>
 ```
