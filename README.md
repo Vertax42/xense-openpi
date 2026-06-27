@@ -500,10 +500,10 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
 #### BiFlexiv - shoe_insole_retrieval_and_packing_1
 
 ```bash
-python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_newbalacne_shoe_insole_retrieval_and_packing_0606_h100
+python scripts/compute_norm_stats.py --config-name pi05_base_bi_flexiv_newbalacne_shoe_insole_retrieval_and_packing_0616_h100
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
-    pi05_base_bi_flexiv_newbalacne_shoe_insole_retrieval_and_packing_0606_h100 \
-    --exp-name=pi05_base_bi_flexiv_newbalacne_shoe_insole_retrieval_and_packing_0606_h100_0606 --overwrite
+    pi05_base_bi_flexiv_newbalacne_shoe_insole_retrieval_and_packing_0616_h100 \
+    --exp-name=pi05_base_bi_flexiv_newbalacne_shoe_insole_retrieval_and_packing_0616_h100_0626 --overwrite
 ```
 
 #### BiFlexiv - bag_inspection_0611
@@ -606,10 +606,10 @@ python scripts/serve_policy.py \
 
 ```bash
 python scripts/serve_policy.py \
-    --default-prompt="Pick up the bag, open it, inspect its contents, close it, and place it on the opposite side." \
+    --default-prompt="Take the shoe out of the shoebox, open the shoe tongue, remove and reinsert the insole, then place the shoe into the shoebox." \
     policy:checkpoint \
     --policy.config=pi05_base_bi_flexiv_bag_inspection_0611_h100 \
-    --policy.dir=checkpoints/pi05_base_bi_flexiv_bag_inspection_0611_h100/pi05_base_bi_flexiv_bag_inspection_0611_h100_0611/59999
+    --policy.dir=checkpoints/pi05_base_bi_flexiv_bag_inspection_0611_h100/pi05_base_bi_flexiv_bag_inspection_0611_h100_0625/58000
 ```
 
 ### Running the robot client
