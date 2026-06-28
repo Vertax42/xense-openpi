@@ -7,15 +7,17 @@
 <style>
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
   #stage { position: fixed; inset: 0; }
-  /* Every clip is always playing underneath; we only crossfade opacity, so a
-     switch is instant — no load, no seek, no black frame. */
+  /* Every clip is always playing. Switching is a LAYERED cross-dissolve: the
+     incoming clip is raised above the current one and faded 0->1 while the
+     current stays fully opaque underneath. The composite is therefore opaque at
+     every instant — the black background never shows through, so there is no
+     bright/dark dip mid-switch. */
   video {
     position: absolute; inset: 0;
     width: 100%; height: 100%; object-fit: cover;
     opacity: 0; transition: opacity 320ms ease-in-out;
     will-change: opacity;
   }
-  video.active { opacity: 1; }
   #status {
     position: fixed; left: 8px; bottom: 6px;
     font: 12px/1.4 monospace; color: #6f6; opacity: .5;
@@ -45,10 +47,11 @@ const stage = document.getElementById("stage");
 const statusEl = document.getElementById("status");
 const els = {};        // scene id -> <video>
 let activeScene = null;
+let zTop = 0;          // running z-index so each switch lands on top
 
-// Preload + autoplay every clip muted & looping so they're warm and switching
-// is a pure opacity crossfade. (Muted autoplay is allowed without a gesture on
-// Chrome and Safari -> works on Windows and macOS displays alike.)
+// Preload + autoplay every clip muted & looping so they're warm; a switch is
+// then a pure opacity fade with no load/seek. (Muted autoplay is allowed
+// without a gesture on Chrome and Safari -> works on Windows and macOS alike.)
 for (const [scene, src] of Object.entries(SCENES)) {
   const v = document.createElement("video");
   v.src = src;
@@ -65,9 +68,22 @@ for (const [scene, src] of Object.entries(SCENES)) {
 function show(scene) {
   if (!(scene in els)) { console.warn("unknown scene", scene); return; }
   if (scene === activeScene) return;
-  if (activeScene && els[activeScene]) els[activeScene].classList.remove("active");
-  els[scene].classList.add("active");
-  els[scene].play().catch(() => {});
+  const v = els[scene];
+
+  // Layered cross-dissolve: drop the incoming clip to opacity 0 *while it is
+  // still below* (covered, so invisible), raise it above everything, then fade
+  // it in over the current clip — which stays opaque underneath the whole time.
+  // No instant where the screen is partially transparent => no dark dip, and a
+  // re-shown scene still fades (its opacity actually changes 0 -> 1).
+  v.style.transition = "none";
+  v.style.opacity = "0";
+  void v.offsetWidth;                 // commit opacity:0 before raising/fading
+  v.style.zIndex = String(++zTop);
+  v.style.transition = "";            // restore CSS transition (320ms)
+  void v.offsetWidth;
+  v.style.opacity = "1";
+  v.play().catch(() => {});
+
   activeScene = scene;
   statusEl.textContent = "scene: " + scene;
 }
