@@ -49,6 +49,31 @@ Useful forward flags: `--args.forward-cameras head` (which raw cameras),
 `--args.forward-state` / `--no-args.forward-state`, `--args.forward-stride N`
 (forward every Nth step to throttle bandwidth; raw head 640×480 @30 Hz ≈ 27 MB/s).
 
+## Develop the detector on a LeRobot dataset (before the robot exists)
+
+You don't need the robot client or the inference server to develop the detection
+algorithm. Replay a recorded dataset episode through the exact production path
+(real `ForwardSubscriber` → app → detector → switch):
+
+```bash
+# 1) start the app (it loads your detector.py)
+python -m examples.dewu_video_switch.app
+# open http://localhost:8080
+
+# 2) stream a dataset episode into it
+python -m examples.dewu_video_switch.replay_lerobot --episode 0
+python -m examples.dewu_video_switch.replay_lerobot --episode 3 --loop --max-frames 600
+```
+
+`replay_lerobot.py` reads `Xense/newbalance_shoe_insole_retrieval_and_packing_0611`
+(override with `--repo-id` / `--root`), pulls each frame's `observation.state` and
+`observation.images.head` (converting CHW float → HWC uint8), and forwards them at
+the dataset fps. Dev loop: edit `detector.py`, restart the app, replay again.
+
+> The shipped `StubDetector` keys off image brightness, so on real footage it
+> will mostly sit on one scene — that's expected. It only proves the data path;
+> the switching becomes meaningful once your real detector is wired in.
+
 ## Plugging in the real detector
 
 `detector.py` ships a dependency-free `StubDetector` (brightness/gripper buckets)
