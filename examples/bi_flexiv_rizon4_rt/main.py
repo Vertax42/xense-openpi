@@ -50,6 +50,7 @@ from xense_client.runtime import runtime as _runtime
 from xense_client.runtime.agents import policy_agent as _policy_agent
 
 import examples.bi_flexiv_rizon4_rt.env as _env
+import examples.bi_flexiv_rizon4_rt.forward as _forward
 import examples.bi_flexiv_rizon4_rt.intervention as _intervention
 import examples.bi_flexiv_rizon4_rt.recorder as _recorder
 
@@ -190,6 +191,15 @@ class Args:
     action_hz: float = 0.0
     paced_queue_size: int = 50
 
+    # Forward obs to a downstream detection machine (Plan B: keypoint detection
+    # + seamless video switching runs off-laptop on Windows/macOS). One-way ws
+    # push of {state, head image}; non-blocking, never affects control.
+    forward: bool = False
+    forward_uri: str = "ws://127.0.0.1:9100"
+    forward_cameras: tuple[str, ...] = ("head",)
+    forward_state: bool = True
+    forward_stride: int = 1  # forward every Nth step; >1 throttles bandwidth
+
     # Recording (LeRobot format, raw 640x480 images + absolute actions)
     record: bool = False
     record_repo_id: str = "Xense/recorded_dataset"
@@ -263,6 +273,16 @@ def main(args: Args) -> None:
         )
         subscribers.append(recorder)
         logger.info(f"Recording enabled: repo_id={args.record_repo_id}, task='{args.task}'")
+
+    if args.forward:
+        forwarder = _forward.make_forward_subscriber(
+            uri=args.forward_uri,
+            cameras=tuple(args.forward_cameras),
+            send_state=args.forward_state,
+            send_stride=args.forward_stride,
+        )
+        subscribers.append(forwarder)
+        logger.info(f"Forwarding obs to detection machine: {args.forward_uri}")
 
     # In decoupled mode the broker is popped at action_hz, not runtime_hz —
     # RTC's internal delay/blend math reads frequency_hz to estimate

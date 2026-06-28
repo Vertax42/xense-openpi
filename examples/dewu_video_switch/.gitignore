@@ -1,0 +1,6 @@
+# Product-specific large binaries and the local-test symlinks (machine-local
+# absolute paths) — keep them out of the repo.
+web/videos/*.mp4
+web/videos/*.mov
+web/videos/*.webm
+web/videos/*.m4v

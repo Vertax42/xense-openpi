@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>dewu video switch</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  #stage { position: fixed; inset: 0; }
+  /* Every clip is always playing underneath; we only crossfade opacity, so a
+     switch is instant — no load, no seek, no black frame. */
+  video {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%; object-fit: cover;
+    opacity: 0; transition: opacity 320ms ease-in-out;
+    will-change: opacity;
+  }
+  video.active { opacity: 1; }
+  #status {
+    position: fixed; left: 8px; bottom: 6px;
+    font: 12px/1.4 monospace; color: #6f6; opacity: .5;
+    pointer-events: none; user-select: none;
+  }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="status">connecting…</div>
+
+<script>
+// ---- Config: scene id -> video file (under web/videos/). -------------------
+// The scene ids MUST match what the detector emits (see detector.py SCENES).
+const SCENES = {
+  scene_a: "videos/scene_a.mp4",
+  scene_b: "videos/scene_b.mp4",
+  scene_c: "videos/scene_c.mp4",
+  scene_d: "videos/scene_d.mp4",
+};
+const DEFAULT_SCENE = "scene_a";
+// Front-end ws is served by app.py on switch-port (default 9101) on this host.
+const SWITCH_WS = `ws://${location.hostname}:9101`;
+// ----------------------------------------------------------------------------
+
+const stage = document.getElementById("stage");
+const statusEl = document.getElementById("status");
+const els = {};        // scene id -> <video>
+let activeScene = null;
+
+// Preload + autoplay every clip muted & looping so they're warm and switching
+// is a pure opacity crossfade. (Muted autoplay is allowed without a gesture on
+// Chrome and Safari -> works on Windows and macOS displays alike.)
+for (const [scene, src] of Object.entries(SCENES)) {
+  const v = document.createElement("video");
+  v.src = src;
+  v.muted = true;
+  v.loop = true;
+  v.autoplay = true;
+  v.playsInline = true;
+  v.preload = "auto";
+  stage.appendChild(v);
+  els[scene] = v;
+  v.play().catch(() => {/* will start once data is ready */});
+}
+
+function show(scene) {
+  if (!(scene in els)) { console.warn("unknown scene", scene); return; }
+  if (scene === activeScene) return;
+  if (activeScene && els[activeScene]) els[activeScene].classList.remove("active");
+  els[scene].classList.add("active");
+  els[scene].play().catch(() => {});
+  activeScene = scene;
+  statusEl.textContent = "scene: " + scene;
+}
+
+show(DEFAULT_SCENE);
+
+// ---- Front-end websocket with auto-reconnect -------------------------------
+function connect() {
+  statusEl.textContent = "connecting…";
+  let ws;
+  try { ws = new WebSocket(SWITCH_WS); }
+  catch (e) { return setTimeout(connect, 1000); }
+
+  ws.onopen = () => { statusEl.textContent = "connected"; };
+  ws.onmessage = (ev) => {
+    try {
+      const msg = JSON.parse(ev.data);
+      if (msg && msg.scene) show(msg.scene);
+    } catch (e) { /* ignore malformed */ }
+  };
+  ws.onclose = () => { statusEl.textContent = "disconnected — retrying"; setTimeout(connect, 1000); };
+  ws.onerror = () => { try { ws.close(); } catch (e) {} };
+}
+connect();
+</script>
+</body>
+</html>

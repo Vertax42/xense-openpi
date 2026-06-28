@@ -1,0 +1,6 @@
+# Detection-machine deps (Windows / macOS). Intentionally minimal — no openpi,
+# no xense_client. msgpack_numpy.py is vendored alongside this file.
+websockets>=12.0
+msgpack>=1.0.0
+numpy>=1.23.0
+# Add your real keypoint model's deps here (e.g. opencv-python, mediapipe, torch).
