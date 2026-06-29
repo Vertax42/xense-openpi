@@ -25,6 +25,12 @@ Example usage:
         --record_repo_id Xense/my_new_dataset \\
         --task "pack 6 cosmetic bottles into the carton"
 
+    # Inference + forward head camera & state to the video-playback laptop at 10 Hz
+    # (off-laptop detection + seamless video switching; never blocks control)
+    python -m examples.bi_flexiv_rizon4_rt.main \\
+        --host 192.168.2.100 --port 8000 \\
+        --forward --forward_uri ws://192.168.2.50:9100 --forward_hz 10
+
     # Inference with Pico4 human intervention (both grips held → teleop takes over)
     python -m examples.bi_flexiv_rizon4_rt.main \\
         --host 192.168.2.100 --port 8000 --pico4_intervention
@@ -191,14 +197,24 @@ class Args:
     action_hz: float = 0.0
     paced_queue_size: int = 50
 
-    # Forward obs to a downstream detection machine (Plan B: keypoint detection
-    # + seamless video switching runs off-laptop on Windows/macOS). One-way ws
-    # push of {state, head image}; non-blocking, never affects control.
+    # Enable forwarding obs to the downstream video-playback laptop (③) for
+    # off-laptop detection + seamless video switching. One-way ws push on a daemon
+    # thread; never blocks the 30 Hz control loop. (Inference is on the separate
+    # 5090 server, set via --host/--port.)
     forward: bool = False
+    # obs ws URI of the video-playback laptop's app (its --obs_port, default 9100).
     forward_uri: str = "ws://127.0.0.1:9100"
+    # Which raw cameras to forward from observation["images_raw"]; the detector uses head.
     forward_cameras: tuple[str, ...] = ("head",)
+    # Forward the 20-D robot state — the gripper detector needs it.
     forward_state: bool = True
-    forward_stride: int = 1  # forward every Nth step; >1 throttles bandwidth
+    # Also forward the 20-D model action (debug/overlay only; the detector ignores it).
+    forward_action: bool = False
+    # Cap the forward rate to this many frames/sec (wall-clock throttle, independent of
+    # runtime_hz). 0 = forward on every control step. e.g. 10 = stream the head at 10 Hz.
+    forward_hz: float = 0.0
+    # Forward every Nth step (integer subsample); prefer forward_hz to target a rate.
+    forward_stride: int = 1
 
     # Recording (LeRobot format, raw 640x480 images + absolute actions)
     record: bool = False
@@ -279,6 +295,8 @@ def main(args: Args) -> None:
             uri=args.forward_uri,
             cameras=tuple(args.forward_cameras),
             send_state=args.forward_state,
+            send_action=args.forward_action,
+            subscribe_hz=args.forward_hz,
             send_stride=args.forward_stride,
         )
         subscribers.append(forwarder)

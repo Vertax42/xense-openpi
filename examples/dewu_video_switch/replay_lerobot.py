@@ -32,7 +32,9 @@ import time
 import numpy as np
 import torch
 
-from examples.bi_flexiv_rizon4_rt.forward import make_forward_subscriber
+# Auto: real ForwardSubscriber on the robot laptop, vendored ws sender on a dev /
+# display machine that has no xense_client (see ws_sender.py).
+from examples.dewu_video_switch.ws_sender import make_forward_subscriber_auto
 
 DEFAULT_REPO = "Xense/newbalance_shoe_insole_retrieval_and_packing_0611"
 
@@ -43,16 +45,40 @@ def _chw_float_to_hwc_uint8(t: torch.Tensor) -> np.ndarray:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Replay a LeRobot episode into the dewu detection pipeline")
-    ap.add_argument("--repo-id", default=DEFAULT_REPO, help="LeRobot dataset repo id")
-    ap.add_argument("--root", default=None, help="local dataset root (default: HF cache)")
-    ap.add_argument("--episode", type=int, default=0, help="episode index to replay")
-    ap.add_argument("--uri", default="ws://127.0.0.1:9100", help="detection app obs ws URI")
-    ap.add_argument("--fps", type=float, default=0.0, help="replay rate; 0 = dataset fps")
-    ap.add_argument("--camera", default="head", help="camera key suffix to forward (observation.images.<camera>)")
-    ap.add_argument("--no-state", action="store_true", help="do not forward observation.state")
-    ap.add_argument("--max-frames", type=int, default=0, help="cap frames (0 = whole episode)")
-    ap.add_argument("--loop", action="store_true", help="replay the episode repeatedly")
+    ap = argparse.ArgumentParser(
+        description=(
+            "LIVE integration test: stream one recorded LeRobot episode's {state, head image} into a "
+            "running detection app (machine ③) over the real forward path, at the dataset frame rate. "
+            "On the robot laptop this uses the production ForwardSubscriber; on a box without "
+            "xense_client it transparently falls back to the vendored ws sender (ws_sender.py)."
+        ),
+        epilog="Start `python -m examples.dewu_video_switch.app` first, then run this against its --uri.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    ap.add_argument(
+        "--repo-id", default=DEFAULT_REPO,
+        help="LeRobot dataset repo id to replay. The default shoe-insole set may not be public — pass one you have.",
+    )
+    ap.add_argument("--root", default=None, help="Local dataset root. Default: the HuggingFace cache.")
+    ap.add_argument("--episode", type=int, default=0, help="Episode index within the dataset to stream.")
+    ap.add_argument(
+        "--uri", default="ws://127.0.0.1:9100",
+        help="obs WebSocket URI of the video-playback laptop's app (its --obs-port, default 9100).",
+    )
+    ap.add_argument(
+        "--fps", type=float, default=0.0,
+        help="Replay/send rate in Hz. 0 = use the dataset's native fps (mimics the real 30 Hz control loop).",
+    )
+    ap.add_argument(
+        "--camera", default="head",
+        help="Camera to forward, i.e. observation.images.<camera>. The detector uses the head image.",
+    )
+    ap.add_argument(
+        "--no-state", action="store_true",
+        help="Do NOT forward observation.state. The gripper detector needs the state, so leave this off for it.",
+    )
+    ap.add_argument("--max-frames", type=int, default=0, help="Cap the number of frames streamed; 0 = the whole episode.")
+    ap.add_argument("--loop", action="store_true", help="Replay the episode repeatedly until Ctrl+C (good for a kiosk demo).")
     args = ap.parse_args()
 
     # Imported lazily so `app.py` on a machine without lerobot is unaffected.
@@ -75,7 +101,7 @@ def main() -> None:
     n = end - start
     print(f"Episode {args.episode}: frames [{start},{end}) = {n} frames, streaming to {args.uri} at {fps:.0f} Hz")
 
-    sub = make_forward_subscriber(args.uri, cameras=(args.camera,), send_state=not args.no_state)
+    sub = make_forward_subscriber_auto(args.uri, cameras=(args.camera,), send_state=not args.no_state)
     sub.on_episode_start()
 
     period = 1.0 / fps

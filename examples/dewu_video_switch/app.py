@@ -1,12 +1,12 @@
 #!/usr/bin/env python
-"""Detection machine app for the dewu seamless video-switch demo (Plan B).
+"""Video-playback laptop app for the dewu seamless video-switch demo (Plan B).
 
 Topology
 --------
     robot laptop (examples.bi_flexiv_rizon4_rt.main --forward)
         │  ws push  {state, head image}  (msgpack)
         ▼
-    THIS PROCESS  (Windows / macOS detection machine)
+    THIS PROCESS  (the video-playback laptop)
         ├─ obs ws server   :9100   ← laptop connects here, pushes frames
         ├─ detector (thread pool)  → SceneController (debounce)
         ├─ switch ws server :9101  → browsers connect, receive {"scene": id}
@@ -19,7 +19,7 @@ dropped while busy) so a heavy keypoint model never stalls the switch broadcast.
 
 Run:
     python -m examples.dewu_video_switch.app          # from the openpi repo root
-    # or, copied standalone onto the detection machine:
+    # or, copied standalone onto the video-playback laptop:
     python app.py
 Then open  http://<this-machine-ip>:8080  on the display.
 """
@@ -40,7 +40,7 @@ try:
     from examples.dewu_video_switch import detector as _detector
     from examples.dewu_video_switch import msgpack_numpy
     from examples.dewu_video_switch.controller import SceneController
-except ImportError:  # standalone copy on the detection machine
+except ImportError:  # standalone copy on the video-playback laptop
     from controller import SceneController  # type: ignore
     import detector as _detector  # type: ignore
     import msgpack_numpy  # type: ignore
@@ -154,13 +154,47 @@ def _serve_static(http_port: int) -> None:
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="dewu seamless video-switch detection app")
-    p.add_argument("--obs-port", type=int, default=9100)
-    p.add_argument("--switch-port", type=int, default=9101)
-    p.add_argument("--http-port", type=int, default=8080)
-    p.add_argument("--detector", default="stub", help="detector name (see detector.make_detector)")
-    p.add_argument("--confirm-frames", type=int, default=5)
-    p.add_argument("--min-dwell-s", type=float, default=1.0)
+    p = argparse.ArgumentParser(
+        description=(
+            "Detection + seamless video-switch app for the video-playback laptop (machine ③). "
+            "Receives forwarded robot obs (head image + state) from the robot laptop, runs the "
+            "detector + scene debounce, and pushes scene switches to the in-browser player."
+        ),
+        epilog=(
+            "Three listeners start together: obs ws (robot laptop connects in), switch ws "
+            "(browsers connect in), and static http (the player). Open http://<this-host>:<http-port> "
+            "on the display. Feed it with examples.dewu_video_switch.replay_lerobot (real dataset) "
+            "or .sim_laptop (synthetic link test)."
+        ),
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    p.add_argument(
+        "--obs-port", type=int, default=9100,
+        help="TCP port of the obs WebSocket server the robot laptop's ForwardSubscriber pushes frames into.",
+    )
+    p.add_argument(
+        "--switch-port", type=int, default=9101,
+        help="TCP port of the switch WebSocket server browsers connect to; it broadcasts {\"scene\": id} on each committed switch.",
+    )
+    p.add_argument(
+        "--http-port", type=int, default=8080,
+        help="TCP port of the static HTTP server for web/ (the seamless player HTML and the video clips).",
+    )
+    p.add_argument(
+        "--detector", default="gripper",
+        help="Which detector to run: 'gripper' = real grasp-state detector from the robot state; "
+        "'stub' = brightness buckets, for the synthetic link test only. See detector.make_detector.",
+    )
+    p.add_argument(
+        "--confirm-frames", type=int, default=5,
+        help="Debounce: a proposed scene must repeat for this many consecutive frames before it may commit. "
+        "Higher = steadier but slower to react.",
+    )
+    p.add_argument(
+        "--min-dwell-s", type=float, default=1.0,
+        help="Debounce: minimum seconds to hold the current scene before another switch is allowed. "
+        "Raise to ~2.5 to suppress brief flicker on a marketing display.",
+    )
     args = p.parse_args()
 
     detector = _detector.make_detector(args.detector)

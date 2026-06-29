@@ -1,4 +1,4 @@
-# Detection-machine deps (Windows / macOS). Intentionally minimal — no openpi,
+# Video-playback laptop deps (Windows / macOS). Intentionally minimal — no openpi,
 # no xense_client. msgpack_numpy.py is vendored alongside this file.
 websockets>=12.0
 msgpack>=1.0.0

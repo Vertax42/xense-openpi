@@ -4,13 +4,18 @@ Put the loop clips here, named to match the `SCENES` map in `../index.html`
 (and the scene ids your detector emits):
 
 ```
-scene_a.mp4  scene_b.mp4  scene_c.mp4  scene_d.mp4
+scene_a.mp4  scene_b.mp4
 ```
 
-For local testing these are symlinked to the repo's `videos/得物_0627_{1..4}.m4v`
-(ascii names so the browser needs no URL-encoding and the `.mp4` extension maps
-to `video/mp4`). On the real detection machine, drop in the product clips under
-these same names.
+For local testing these are symlinked to the repo's `white_shoe_0.mp4` /
+`white_shoe_1.mp4`:
+
+```bash
+ln -sf ../../../../white_shoe_0.mp4 scene_a.mp4
+ln -sf ../../../../white_shoe_1.mp4 scene_b.mp4
+```
+
+On the real playback machine, drop in the product clips under these same names.
 
 Tips for seamless switching:
 - Encode each clip to loop cleanly (first/last frame match) — the player sets

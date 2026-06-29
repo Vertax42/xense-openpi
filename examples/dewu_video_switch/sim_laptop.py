@@ -10,16 +10,16 @@ it does NOT import the robot SDK or connect to the policy server.
 
 Usage
 -----
-1) On the detection machine, start the app:
+1) On the video-playback laptop, start the app:
        python -m examples.dewu_video_switch.app
-   and open  http://<detection-machine-ip>:8080  in a browser.
+   and open  http://<play-ip>:8080  in a browser.
 
 2) On the robot laptop (or any machine with xense_client installed):
-       python -m examples.dewu_video_switch.sim_laptop --uri ws://<detection-machine-ip>:9100
+       python -m examples.dewu_video_switch.sim_laptop --uri ws://<play-ip>:9100
 
-You should see the browser cycle scene_a → scene_b → scene_c → scene_d (~2 s
-each) and the app console print "[scene] → ...". That confirms ports, firewall,
-msgpack codec, and the whole switch path end-to-end.
+You should see the browser flip scene_a ↔ scene_b (~2 s each) and the app console
+print "[scene] → ...". That confirms ports, firewall, msgpack codec, and the
+whole switch path end-to-end.
 """
 
 import argparse
@@ -27,24 +27,43 @@ import time
 
 import numpy as np
 
-from examples.bi_flexiv_rizon4_rt.forward import make_forward_subscriber
+# Auto: real ForwardSubscriber on the robot laptop, vendored ws sender on a dev /
+# display machine that has no xense_client (see ws_sender.py).
+from examples.dewu_video_switch.ws_sender import make_forward_subscriber_auto
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="ForwardSubscriber link test (no inference server, no robot)")
-    ap.add_argument("--uri", default="ws://127.0.0.1:9100", help="detection machine obs ws URI")
-    ap.add_argument("--hz", type=float, default=30.0, help="send rate (mimics runtime_hz)")
-    ap.add_argument("--hold-s", type=float, default=2.0, help="seconds to hold each scene")
-    ap.add_argument("--seconds", type=float, default=0.0, help="total run time; 0 = until Ctrl+C")
+    ap = argparse.ArgumentParser(
+        description=(
+            "Synthetic link test for the forward path — no inference server, no robot, no dataset. "
+            "Sends frames that alternate between two synthetic states (low/high gripper + dark/bright "
+            "head image), so the app flips scene_a <-> scene_b whichever detector it runs (gripper or "
+            "stub). Confirms ports, firewall, msgpack codec, and the whole switch path end-to-end."
+        ),
+        epilog="Uses the production ForwardSubscriber if xense_client is present, else the vendored ws sender.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    ap.add_argument(
+        "--uri", default="ws://127.0.0.1:9100",
+        help="obs WebSocket URI of the video-playback laptop's app (its --obs-port, default 9100).",
+    )
+    ap.add_argument("--hz", type=float, default=30.0, help="Send rate in Hz (mimics the robot's runtime_hz).")
+    ap.add_argument("--hold-s", type=float, default=2.0, help="Seconds to hold each synthetic scene before alternating.")
+    ap.add_argument("--seconds", type=float, default=0.0, help="Total run time in seconds; 0 = run until Ctrl+C.")
     args = ap.parse_args()
 
-    sub = make_forward_subscriber(args.uri)
+    sub = make_forward_subscriber_auto(args.uri)
     sub.on_episode_start()
 
     period = 1.0 / args.hz
     frames_per_scene = max(1, int(args.hold_s * args.hz))
-    # Brightness buckets that StubDetector maps to scene_a..scene_d.
-    levels = [0.1, 0.4, 0.6, 0.9]
+    # Two synthetic states, alternating. The gripper value drives the default
+    # GripperSceneDetector; the brightness drives the StubDetector — so this link
+    # test flips scene_a <-> scene_b whichever detector app.py is running.
+    #   index 0: low gripper  + dark  -> scene_a
+    #   index 1: high gripper + bright -> scene_b
+    grips = [0.2, 0.9]
+    brights = [0.15, 0.85]
 
     print(
         f"Sending synthetic frames to {args.uri} at {args.hz:.0f} Hz "
@@ -54,9 +73,11 @@ def main() -> None:
     i = 0
     try:
         while True:
-            level = levels[(i // frames_per_scene) % len(levels)]
-            head = np.full((480, 640, 3), int(level * 255), dtype=np.uint8)
-            obs = {"state": np.zeros(20, dtype=np.float32), "images_raw": {"head": head}}
+            k = (i // frames_per_scene) % 2
+            head = np.full((480, 640, 3), int(brights[k] * 255), dtype=np.uint8)
+            state = np.zeros(20, dtype=np.float32)
+            state[18] = state[19] = grips[k]  # left/right gripper.pos
+            obs = {"state": state, "images_raw": {"head": head}}
             action = {"actions": np.zeros(20, dtype=np.float32)}
             sub.on_step(obs, action)
             i += 1

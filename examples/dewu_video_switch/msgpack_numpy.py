@@ -1,6 +1,6 @@
 """NumPy-aware msgpack codec (vendored from xense_client.msgpack_numpy).
 
-Vendored so the detection machine (Windows / macOS) needs only `msgpack` and
+Vendored so the video-playback laptop (Windows / macOS) needs only `msgpack` and
 `numpy` — no xense_client / openpi install. Keep this byte-compatible with the
 upstream copy so frames packed on the robot laptop decode here unchanged.
 """

@@ -1,28 +1,30 @@
-"""Forward selected observation channels to a downstream detection machine.
+"""Forward selected observation channels to a downstream video-playback laptop.
 
-Plan B: the heavy keypoint-detection + seamless video-switching runs on a
-SEPARATE machine (Windows / macOS). This subscriber lives in the robot host
-laptop's inference process and only forwards the data that machine needs
-(robot state + head camera raw image) over a websocket. All detection/render
-cost stays off the control laptop.
+Plan B: the detection + seamless video-switching runs on a SEPARATE machine
+(the video-playback computer). This subscriber lives in the robot host laptop's
+control process and forwards only the two channels that machine needs — the
+**head camera stream** and the **robot state** — over a websocket, at a
+configurable rate (subscribe_hz). All detection/render cost stays off the laptop,
+and the per-step cost on the laptop is kept ~zero (see on_step).
 
 Design constraints (see xense_client.runtime.runtime.Runtime._step, which calls
 subscriber.on_step INSIDE the control loop):
 - on_step must NEVER block. It only drops the latest frame into a single-slot
   queue (discarding any stale frame) and returns immediately.
 - A daemon thread owns the websocket: it connects, sends, and reconnects on
-  failure. Every exception is swallowed so a dead detection machine, a slow
+  failure. Every exception is swallowed so a dead video-playback laptop, a slow
   link, or a network hiccup can never disturb the robot's 30 Hz control loop or
   its home-on-exit motion.
 
 The wire format is msgpack (xense_client.msgpack_numpy), the same codec the
-inference channel uses. The detection machine can decode it with a vendored
+inference channel uses. The video-playback laptop can decode it with a vendored
 copy of msgpack_numpy.py (no xense_client dependency required).
 """
 
 import contextlib
 import queue
 import threading
+import time
 
 from typing_extensions import override
 import websockets.sync.client
@@ -36,7 +38,7 @@ logger = get_logger("ForwardSubscriber")
 class ForwardSubscriber(_subscriber.Subscriber):
     """Push a slim per-step payload to a downstream websocket receiver.
 
-    Connects OUT to the detection machine (which runs the websocket server), so
+    Connects OUT to the video-playback laptop (which runs the websocket server), so
     the robot laptop needs no inbound ports. One-way: obs out, nothing read back.
     """
 
@@ -46,24 +48,39 @@ class ForwardSubscriber(_subscriber.Subscriber):
         *,
         cameras: tuple[str, ...] = ("head",),
         send_state: bool = True,
+        send_action: bool = False,
+        subscribe_hz: float = 0.0,
         send_stride: int = 1,
         connect_timeout_s: float = 2.0,
     ) -> None:
         """
+        The detector needs exactly two channels: the **head camera stream** and
+        the **robot state**. Those are the defaults; everything else is opt-in or
+        dropped to keep the per-step cost ~zero.
+
         Args:
-            uri: ws URI of the detection machine, e.g. "ws://192.168.1.50:9100".
+            uri: ws URI of the video-playback laptop, e.g. "ws://192.168.1.50:9100".
             cameras: which raw cameras to forward from observation["images_raw"].
-                Defaults to the head camera only (state + head image is what the
-                detector needs; wrists are dropped to save bandwidth).
-            send_state: also forward the 20-D robot state (observation["state"]).
-            send_stride: forward every Nth step (1 = every step). Use >1 to
-                throttle bandwidth if the detector runs slower than 30 Hz.
+                Defaults to the head camera only — head video + state is all the
+                detector needs; wrists are dropped to save bandwidth.
+            send_state: forward the 20-D robot state (observation["state"]).
+            send_action: also forward the model action (observation/debug only —
+                the detector does not use it). Off by default to stay lean.
+            subscribe_hz: cap the forward rate to this many frames/sec via a
+                wall-clock throttle, independent of the control loop's runtime_hz.
+                0 = forward on every step. e.g. 10 streams the head at 10 Hz while
+                control still runs at 30 Hz.
+            send_stride: forward every Nth step (1 = every step). Integer
+                subsample; prefer subscribe_hz to target an actual rate.
             connect_timeout_s: per-attempt websocket connect timeout.
         """
         self._uri = uri
         self._cameras = cameras
         self._send_state = send_state
+        self._send_action = send_action
         self._send_stride = max(1, int(send_stride))
+        self._min_period = (1.0 / subscribe_hz) if subscribe_hz and subscribe_hz > 0 else 0.0
+        self._last_enqueue_t = 0.0
         self._connect_timeout_s = connect_timeout_s
 
         self._packer = msgpack_numpy.Packer()
@@ -78,7 +95,10 @@ class ForwardSubscriber(_subscriber.Subscriber):
 
         self._worker = threading.Thread(target=self._run, name="forward-sender", daemon=True)
         self._worker.start()
-        logger.info(f"ForwardSubscriber → {uri} (cameras={cameras}, state={send_state}, stride={self._send_stride})")
+        rate = f"{subscribe_hz:g} Hz" if self._min_period > 0.0 else f"every {self._send_stride} step(s)"
+        logger.info(
+            f"ForwardSubscriber → {uri} (cameras={cameras}, state={send_state}, action={send_action}, rate={rate})"
+        )
 
     # ----- Subscriber API (runs in the control loop; keep it cheap) -----
 
@@ -88,23 +108,38 @@ class ForwardSubscriber(_subscriber.Subscriber):
 
     @override
     def on_step(self, observation: dict, action: dict) -> None:
+        # This runs INSIDE the 30 Hz control loop, so keep it ~zero-cost: cheap
+        # gates first, then stash *references* to the two key channels (no array
+        # copy, no serialization) and a single-slot enqueue. All real work —
+        # msgpack of the head frame, socket send, reconnect — is done off-loop on
+        # the daemon thread below. The head image is taken by reference straight
+        # from the obs buffer; latest-wins semantics (drop-oldest) mean a torn
+        # frame is at worst one stale head image, which the detector tolerates.
         self._step_idx += 1
         if self._step_idx % self._send_stride != 0:
             return
+        if self._min_period > 0.0:
+            now = time.monotonic()
+            if (now - self._last_enqueue_t) < self._min_period:
+                return  # not due yet at the requested subscribe_hz
+            self._last_enqueue_t = now
 
         payload: dict = {"step": self._step_idx}
-        if self._send_state and "state" in observation:
-            payload["state"] = observation["state"]
+        if self._send_state:
+            state = observation.get("state")
+            if state is not None:
+                payload["state"] = state  # 20-D, by reference
 
-        raw = observation.get("images_raw", {})
-        imgs = {cam: raw[cam] for cam in self._cameras if cam in raw}
-        if imgs:
-            payload["images"] = imgs
+        raw = observation.get("images_raw")
+        if raw is not None:
+            imgs = {cam: raw[cam] for cam in self._cameras if cam in raw}  # head, by reference
+            if imgs:
+                payload["images"] = imgs
 
-        # Optionally forward the model's action for overlay/debug downstream.
-        act = action.get("actions") if isinstance(action, dict) else None
-        if act is not None:
-            payload["action"] = act
+        if self._send_action:
+            act = action.get("actions") if isinstance(action, dict) else None
+            if act is not None:
+                payload["action"] = act
 
         # Non-blocking enqueue, drop-oldest. Never blocks the control loop.
         try:
@@ -184,6 +219,8 @@ def make_forward_subscriber(
     *,
     cameras: tuple[str, ...] = ("head",),
     send_state: bool = True,
+    send_action: bool = False,
+    subscribe_hz: float = 0.0,
     send_stride: int = 1,
 ) -> ForwardSubscriber:
     """Convenience factory mirroring make_recorder_subscriber's style."""
@@ -191,5 +228,7 @@ def make_forward_subscriber(
         uri,
         cameras=cameras,
         send_state=send_state,
+        send_action=send_action,
+        subscribe_hz=subscribe_hz,
         send_stride=send_stride,
     )
