@@ -147,16 +147,22 @@ class StubDetector(Detector):
         return None
 
 
-def make_detector(name: str = "gripper", **kwargs) -> Detector:
+def make_detector(name: str = "gripper", *, config_path: str | None = None, **kwargs) -> Detector:
     """Factory so app.py can select a detector by name / config.
 
-    Register heavier product detectors here, e.g.:
-        if name == "keypoint":
-            from dewu_video_switch.keypoint_detector import KeypointDetector
-            return KeypointDetector(**kwargs)
+    config_path is only used by detectors that take a JSON config (shoe_sm); it is
+    not forwarded to the simple detectors.
     """
     if name == "gripper":
         return GripperSceneDetector(**kwargs)
     if name == "stub":
         return StubDetector(**kwargs)
+    if name == "shoe_sm":
+        # Per-shoe state machine (pose+gripper pick event + OpenCV blue insole).
+        # Lazy import: pulls in pose_events/vision (cv2) only when selected.
+        try:
+            from examples.dewu_video_switch.shoe_state_machine import ShoeStateMachineDetector
+        except ImportError:  # standalone copy on the video-playback laptop
+            from shoe_state_machine import ShoeStateMachineDetector  # type: ignore
+        return ShoeStateMachineDetector(config_path=config_path, **kwargs)
     raise ValueError(f"unknown detector: {name!r}")

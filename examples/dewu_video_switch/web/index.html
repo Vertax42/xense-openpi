@@ -33,10 +33,11 @@
 // ---- Config: scene id -> video file (under web/videos/). -------------------
 // The scene ids MUST match what the detector emits (see detector.py SCENES).
 const SCENES = {
-  scene_a: "videos/scene_a.mp4",
-  scene_b: "videos/scene_b.mp4",
+  standby:   "videos/standby.mp4",    // state 0 — idle / reset (arm at init)
+  detecting: "videos/detecting.mp4",  // after a pick — detection running
+  next:      "videos/next.mp4",       // after the blue insole is detected
 };
-const DEFAULT_SCENE = "scene_a";
+const DEFAULT_SCENE = "standby";
 // Front-end ws is served by app.py on switch-port (default 9101) on this host.
 const SWITCH_WS = `ws://${location.hostname}:9101`;
 // ----------------------------------------------------------------------------

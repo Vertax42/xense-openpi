@@ -182,8 +182,14 @@ def main() -> None:
     )
     p.add_argument(
         "--detector", default="gripper",
-        help="Which detector to run: 'gripper' = real grasp-state detector from the robot state; "
-        "'stub' = brightness buckets, for the synthetic link test only. See detector.make_detector.",
+        help="Which detector to run: 'shoe_sm' = per-shoe state machine (pose+gripper pick event + "
+        "OpenCV blue insole); 'gripper' = simple grasp-state detector; 'stub' = brightness (link test "
+        "only). See detector.make_detector.",
+    )
+    p.add_argument(
+        "--detector-config", default=None,
+        help="Path to a JSON config for the detector (shoe_sm only: bounding box, blue HSV, etc.). "
+        "See shoe_sm.example.json. Omit to use placeholder defaults.",
     )
     p.add_argument(
         "--confirm-frames", type=int, default=5,
@@ -197,7 +203,7 @@ def main() -> None:
     )
     args = p.parse_args()
 
-    detector = _detector.make_detector(args.detector)
+    detector = _detector.make_detector(args.detector, config_path=args.detector_config)
     controller = SceneController(confirm_frames=args.confirm_frames, min_dwell_s=args.min_dwell_s)
     app = App(detector, controller)
 

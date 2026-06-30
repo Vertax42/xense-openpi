@@ -3,4 +3,6 @@
 websockets>=12.0
 msgpack>=1.0.0
 numpy>=1.23.0
-# Add your real keypoint model's deps here (e.g. opencv-python, mediapipe, torch).
+# Needed only by the shoe_sm detector (OpenCV blue-insole detection); the gripper
+# and stub detectors do not import cv2.
+opencv-python>=4.5.0
