@@ -1,0 +1,22 @@
+{
+  "_comment": "Config for the shoe_sm detector. Copy to shoe_sm.json and tune from the dataset (see replay_offline.py --calibrate-tcp / --vision-scan). All TCP coords are robot-base meters; blue is OpenCV HSV (H 0..179, S/V 0..255).",
+  "n_shoes": 4,
+  "vision_stride": 30,
+  "vision_confirm": 2,
+  "home_tol": 0.05,
+  "tcp_idx": [9, 10, 11],
+  "grip_idx": 19,
+  "grasp_is_low": true,
+  "pick_box": {
+    "x_min": 0.45, "x_max": 0.95,
+    "y_min": -0.35, "y_max": 0.35,
+    "z_min": -0.40, "z_max": 0.05
+  },
+  "blue": {
+    "h_lo": 100, "h_hi": 130,
+    "s_lo": 80, "s_hi": 255,
+    "v_lo": 40, "v_hi": 255,
+    "min_area_frac": 0.02,
+    "roi": [0.0, 0.4, 1.0, 1.0]
+  }
+}
