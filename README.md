@@ -46,11 +46,12 @@ For all models, we provide _base model_ checkpoints, pre-trained on 10k+ hours o
 
 ## Installation
 
-We use the `lerobot-xense` mamba environment as the base, then install the client package followed by the main openpi package.
+We build on the `lerobot-xense` mamba environment, then install the client package followed by the main openpi package.
 
 ```bash
 # Clone with submodules
-git clone git@github.com:Vertax42/openpi.git
+git clone git@github.com:Vertax42/xense-openpi.git openpi
+cd openpi
 
 # Activate the base environment
 mamba activate lerobot-xense
@@ -284,17 +285,7 @@ openpi now provides PyTorch implementations of π₀ and π₀.₅ models alongs
 
 ### Setup
 
-1. Make sure transformers 4.53.2 is installed: `pip show transformers`
-
-2. Apply the transformers library patches (adjust the site-packages path for your Python version):
-   ```bash
-   # Find your site-packages path
-   python -c "import transformers; print(transformers.__file__)"
-   # Copy patches
-   cp -r ./src/openpi/models_pytorch/transformers_replace/* $(python -c "import transformers, os; print(os.path.dirname(transformers.__file__))")/
-   ```
-
-This overwrites several files in the transformers library with necessary model changes: 1) supporting AdaRMS, 2) correctly controlling the precision of activations, and 3) allowing the KV cache to be used without being updated.
+`pip install -e .` is sufficient. The PyTorch path uses `transformers>=5.5,<5.6`; Pi0-specific behavior (AdaRMS, activation precision, read-only KV cache) lives in `src/openpi/models_pytorch/transformers_compat/` and is imported directly by `gemma_pytorch.py`. The old `transformers_replace/` copy-into-site-packages workflow has been removed.
 
 ### Converting JAX Models to PyTorch
 

@@ -1,12 +1,18 @@
 from typing import Literal
 
-import pytest
 import torch
 from torch import nn
-from transformers import GemmaForCausalLM
-from transformers import PaliGemmaForConditionalGeneration
+from transformers import Cache
 from transformers.models.auto import CONFIG_MAPPING
-from transformers.models.gemma import modeling_gemma
+from transformers.models.gemma.modeling_gemma import apply_rotary_pos_emb
+from transformers.models.gemma.modeling_gemma import eager_attention_forward
+
+from openpi.models_pytorch.transformers_compat import PiGemmaConfig
+from openpi.models_pytorch.transformers_compat import PiGemmaForCausalLM as GemmaForCausalLM
+from openpi.models_pytorch.transformers_compat import (
+    PiPaliGemmaForConditionalGeneration as PaliGemmaForConditionalGeneration,
+)
+from openpi.models_pytorch.transformers_compat import gated_residual
 
 
 class PaliGemmaWithExpertModel(nn.Module):
@@ -31,16 +37,16 @@ class PaliGemmaWithExpertModel(nn.Module):
         vlm_config_hf.text_config.num_hidden_layers = vlm_config.depth
         vlm_config_hf.text_config.num_key_value_heads = vlm_config.num_kv_heads
         vlm_config_hf.text_config.hidden_activation = "gelu_pytorch_tanh"
-        vlm_config_hf.text_config.torch_dtype = "float32"
+        vlm_config_hf.text_config.dtype = "float32"
         vlm_config_hf.text_config.vocab_size = 257152
         vlm_config_hf.text_config.use_adarms = use_adarms[0]
         vlm_config_hf.text_config.adarms_cond_dim = vlm_config.width if use_adarms[0] else None
         vlm_config_hf.vision_config.intermediate_size = 4304
         vlm_config_hf.vision_config.projection_dim = 2048
         vlm_config_hf.vision_config.projector_hidden_act = "gelu_fast"
-        vlm_config_hf.vision_config.torch_dtype = "float32"
+        vlm_config_hf.vision_config.dtype = "float32"
 
-        action_expert_config_hf = CONFIG_MAPPING["gemma"](
+        action_expert_config_hf = PiGemmaConfig(
             head_dim=action_expert_config.head_dim,
             hidden_size=action_expert_config.width,
             intermediate_size=action_expert_config.mlp_dim,
@@ -49,7 +55,7 @@ class PaliGemmaWithExpertModel(nn.Module):
             num_key_value_heads=action_expert_config.num_kv_heads,
             vocab_size=257152,
             hidden_activation="gelu_pytorch_tanh",
-            torch_dtype="float32",
+            dtype="float32",
             use_adarms=use_adarms[1],
             adarms_cond_dim=action_expert_config.width if use_adarms[1] else None,
         )
@@ -92,7 +98,7 @@ class PaliGemmaWithExpertModel(nn.Module):
         self,
         attention_mask: torch.Tensor | None = None,
         position_ids: torch.LongTensor | None = None,
-        past_key_values: list[torch.FloatTensor] | pytest.Cache | None = None,
+        past_key_values: list[torch.FloatTensor] | Cache | None = None,
         inputs_embeds: list[torch.FloatTensor] | None = None,
         use_cache: bool | None = None,
         adarms_cond: list[torch.Tensor] | None = None,
@@ -190,7 +196,7 @@ class PaliGemmaWithExpertModel(nn.Module):
                     dtype=query_states.dtype,
                 )
                 cos, sin = self.paligemma.model.language_model.rotary_emb(dummy_tensor, position_ids)
-                query_states, key_states = modeling_gemma.apply_rotary_pos_emb(
+                query_states, key_states = apply_rotary_pos_emb(
                     query_states, key_states, cos, sin, unsqueeze_dim=1
                 )
 
@@ -198,7 +204,7 @@ class PaliGemmaWithExpertModel(nn.Module):
                 scaling = self.paligemma.language_model.layers[layer_idx].self_attn.scaling
 
                 # Attention computation
-                att_output, _ = modeling_gemma.eager_attention_forward(
+                att_output, _ = eager_attention_forward(
                     self.paligemma.language_model.layers[layer_idx].self_attn,
                     query_states,
                     key_states,
@@ -222,7 +228,7 @@ class PaliGemmaWithExpertModel(nn.Module):
                     out_emb = layer.self_attn.o_proj(att_output[:, start_pos:end_pos])
 
                     # first residual
-                    out_emb = modeling_gemma._gated_residual(hidden_states, out_emb, gates[i])
+                    out_emb = gated_residual(hidden_states, out_emb, gates[i])
                     after_first_residual = out_emb.clone()
                     out_emb, gate = layer.post_attention_layernorm(out_emb, cond=adarms_cond[i])
                     # Convert to bfloat16 if the next layer (mlp) uses bfloat16
@@ -231,7 +237,7 @@ class PaliGemmaWithExpertModel(nn.Module):
 
                     out_emb = layer.mlp(out_emb)
                     # second residual
-                    out_emb = modeling_gemma._gated_residual(after_first_residual, out_emb, gate)
+                    out_emb = gated_residual(after_first_residual, out_emb, gate)
                     outputs_embeds.append(out_emb)
                     start_pos = end_pos
 
