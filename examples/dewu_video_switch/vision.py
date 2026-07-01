@@ -47,7 +47,13 @@ class BlueInsoleDetector:
 
         self._cv2 = cv2
 
-    def detect(self, head_rgb: np.ndarray) -> tuple[bool, dict]:
+    def _segment(self, head_rgb: np.ndarray):
+        """Shared HSV->morphology->contour core.
+
+        Returns (present, area_frac, n_contours, mask, roi_box) where mask is the
+        binary blue mask over the ROI (None if the ROI is empty) and roi_box is
+        (xs, ys, xe, ye) in full-frame pixels. Used by both detect() and annotate().
+        """
         cv2 = self._cv2
         cfg = self.cfg
         h, w = head_rgb.shape[:2]
@@ -55,11 +61,12 @@ class BlueInsoleDetector:
         if cfg.roi is not None:
             x0, y0, x1, y1 = cfg.roi
             xs, ys, xe, ye = int(x0 * w), int(y0 * h), int(x1 * w), int(y1 * h)
-            roi = head_rgb[ys:ye, xs:xe]
         else:
-            roi = head_rgb
+            xs, ys, xe, ye = 0, 0, w, h
+        roi = head_rgb[ys:ye, xs:xe]
+        roi_box = (xs, ys, xe, ye)
         if roi.size == 0:
-            return False, {"area_frac": 0.0, "n_contours": 0, "reason": "empty_roi"}
+            return False, 0.0, 0, None, roi_box
 
         hsv = cv2.cvtColor(roi, cv2.COLOR_RGB2HSV)  # input is RGB
         mask = cv2.inRange(
@@ -79,4 +86,30 @@ class BlueInsoleDetector:
         max_area = max((cv2.contourArea(c) for c in cnts), default=0.0)
         area_frac = max_area / max(1, roi_area)
         present = area_frac >= cfg.min_area_frac
-        return present, {"area_frac": float(area_frac), "n_contours": len(cnts)}
+        return present, float(area_frac), len(cnts), mask, roi_box
+
+    def detect(self, head_rgb: np.ndarray) -> tuple[bool, dict]:
+        present, area_frac, n_contours, mask, _ = self._segment(head_rgb)
+        if mask is None:
+            return False, {"area_frac": 0.0, "n_contours": 0, "reason": "empty_roi"}
+        return present, {"area_frac": area_frac, "n_contours": n_contours}
+
+    def annotate(self, head_rgb: np.ndarray) -> tuple[bool, float, np.ndarray]:
+        """Debug-only: return (present, area_frac, overlay_bgr).
+
+        overlay_bgr is the head image (BGR, ready for cv2.VideoWriter/imshow) with
+        the blue mask tinted in and the ROI drawn as a yellow rectangle.
+        """
+        cv2 = self._cv2
+        present, area_frac, _n, mask, (xs, ys, xe, ye) = self._segment(head_rgb)
+        bgr = cv2.cvtColor(head_rgb, cv2.COLOR_RGB2BGR)
+        if mask is not None:
+            sub = bgr[ys:ye, xs:xe]
+            m = mask.astype(bool)
+            if m.any():
+                tint = np.zeros_like(sub)
+                tint[..., 0] = 255  # BGR: pure blue
+                sub[m] = (0.45 * sub[m] + 0.55 * tint[m]).astype(np.uint8)
+                bgr[ys:ye, xs:xe] = sub
+        cv2.rectangle(bgr, (xs, ys), (xe - 1, ye - 1), (0, 255, 255), 2)  # ROI: yellow
+        return present, area_frac, bgr

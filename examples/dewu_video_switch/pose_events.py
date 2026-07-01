@@ -102,6 +102,9 @@ class BoxGraspEdgeEvent:
         self._grasp = GraspCalibrator(grasp_is_low, grasp_threshold)
         self._confirm_inside = max(1, confirm_inside)
         self._confirm_grasp = max(1, confirm_grasp)
+        # Per-frame signal snapshot for debug/visualization (no effect on logic);
+        # update() refreshes it every frame.
+        self.last: dict = {"phase": "idle", "xyz": None, "in_box": False, "grasp_closed": False}
         self.reset()
 
     def reset(self) -> None:
@@ -109,6 +112,10 @@ class BoxGraspEdgeEvent:
         self._inside_count = 0
         self._outside_count = 0
         self._grasp_count = 0
+        # NOTE: do not touch self.last here. reset() is called *inside* update() on
+        # the firing frame (TCP exits the box), and clobbering the snapshot there
+        # would hide the very signals that caused the pick. self.last is owned by
+        # update() (set fresh each frame) and initialized in __init__.
 
     @property
     def phase(self) -> str:
@@ -118,6 +125,12 @@ class BoxGraspEdgeEvent:
         xyz = (state[self._tcp_idx[0]], state[self._tcp_idx[1]], state[self._tcp_idx[2]])
         inside = self.box.contains(xyz)
         is_closed = bool(self._grasp.update(float(state[self._grip_idx])))
+        self.last = {
+            "phase": self._phase,
+            "xyz": (float(xyz[0]), float(xyz[1]), float(xyz[2])),
+            "in_box": bool(inside),
+            "grasp_closed": is_closed,
+        }
 
         if self._phase == "idle":
             self._inside_count = self._inside_count + 1 if inside else 0

@@ -99,17 +99,34 @@ class ShoeSMConfig:
         grasp_is_low = bool(d.get("grasp_is_low", True))
         grasp_threshold = d.get("grasp_threshold")
         tcp_idx = tuple(d.get("tcp_idx", RIGHT_TCP_XYZ))
-        if "pick_boxes" in d:
-            boxes = [_box(b) for b in d["pick_boxes"]]
-        elif "pick_box" in d:
-            boxes = [_box(d["pick_box"])] * cfg.n_shoes
+        if "transitions" in d:
+            # Full per-pick spec: each entry sets its own box and (optionally) which
+            # arm detects it via tcp_idx/grip_idx — e.g. picks 1-2 on the RIGHT arm
+            # and picks 3-4 on the LEFT arm when the two arms alternate take-outs.
+            # Top-level tcp_idx/grip_idx/grasp_* are the per-entry defaults.
+            cfg.transitions = [
+                TransitionConfig(
+                    box=_box(e["box"]),
+                    tcp_idx=tuple(e.get("tcp_idx", tcp_idx)),
+                    grip_idx=int(e.get("grip_idx", grip_idx)),
+                    grasp_is_low=bool(e.get("grasp_is_low", grasp_is_low)),
+                    grasp_threshold=e.get("grasp_threshold", grasp_threshold),
+                )
+                for e in d["transitions"]
+            ]
+            cfg.n_shoes = len(cfg.transitions)
         else:
-            boxes = []  # falls back to placeholder default below
-        cfg.transitions = [
-            TransitionConfig(box=b, tcp_idx=tcp_idx, grip_idx=grip_idx,
-                             grasp_is_low=grasp_is_low, grasp_threshold=grasp_threshold)
-            for b in boxes
-        ]
+            if "pick_boxes" in d:
+                boxes = [_box(b) for b in d["pick_boxes"]]
+            elif "pick_box" in d:
+                boxes = [_box(d["pick_box"])] * cfg.n_shoes
+            else:
+                boxes = []  # falls back to placeholder default below
+            cfg.transitions = [
+                TransitionConfig(box=b, tcp_idx=tcp_idx, grip_idx=grip_idx,
+                                 grasp_is_low=grasp_is_low, grasp_threshold=grasp_threshold)
+                for b in boxes
+            ]
 
         if "blue" in d:
             cfg.blue = BlueInsoleConfig(**{k: (tuple(v) if k == "roi" and v is not None else v)
@@ -154,11 +171,32 @@ class ShoeStateMachineDetector(Detector):
         self._blue_fired = False
         self._blue_pos_count = 0
         self._frame_i = 0
+        self._last_blue_area: float | None = None
+        # Per-frame debug snapshot (filled by detect(); read by replay_debug).
+        self.last: dict = {}
 
     # ----- introspection (used by replay_offline timeline) -----
     @property
     def state(self) -> int:
         return self._state
+
+    def _record(self, event, from_state, to_state, pick_dbg, blue_dbg) -> str:
+        """Stash a per-frame debug snapshot and return the current scene level."""
+        scene = self._level()
+        self.last = {
+            "frame": self._frame_i,
+            "state": self._state,
+            "n_shoes": self.cfg.n_shoes,
+            "scene": scene,
+            "event": event,            # None | "pick" | "blue" | "reset"
+            "from_state": from_state,
+            "to_state": to_state,
+            "pick": pick_dbg,          # {phase, xyz, in_box, grasp_closed, target_state} | None
+            "blue": blue_dbg,          # {checked, area_frac, present}
+            "blue_fired": self._blue_fired,
+            "last_blue_area": self._last_blue_area,
+        }
+        return scene
 
     def _ensure_blue(self):
         if self._blue is None:
@@ -183,9 +221,12 @@ class ShoeStateMachineDetector(Detector):
 
     def detect(self, frame: dict) -> str | None:
         self._frame_i += 1
+        blue_dbg = {"checked": False, "area_frac": None, "present": None}
+        pick_dbg = None
+
         state = frame.get("state")
         if not isinstance(state, np.ndarray) or state.shape[-1] < 20:
-            return self._level()
+            return self._record(None, self._state, self._state, pick_dbg, blue_dbg)
 
         # Auto-capture the home pose from the first state-0 frames (arm at init).
         if self._home is None and self._state == 0 and len(self._home_capture) < 5:
@@ -200,11 +241,18 @@ class ShoeStateMachineDetector(Detector):
 
         # Pick event: advance to the next shoe state.
         if self._state < self.cfg.n_shoes:
-            if self._picks[self._state].update(state):
+            ev = self._picks[self._state]
+            fired = ev.update(state)
+            pick_dbg = dict(ev.last)
+            pick_dbg["phase"] = ev.phase
+            pick_dbg["target_state"] = self._state + 1
+            pick_dbg["arm"] = "L" if tuple(self.cfg.transitions[self._state].tcp_idx) == LEFT_TCP_XYZ else "R"
+            if fired:
+                from_state = self._state
                 self._state += 1
                 self._blue_fired = False
                 self._blue_pos_count = 0
-                return self._level()
+                return self._record("pick", from_state, self._state, pick_dbg, blue_dbg)
 
         # Blue event (~vision_stride): only within an active shoe state, once each.
         if 1 <= self._state <= self.cfg.n_shoes and not self._blue_fired:
@@ -212,13 +260,17 @@ class ShoeStateMachineDetector(Detector):
                 head = (frame.get("images") or {}).get("head")
                 if isinstance(head, np.ndarray) and head.ndim == 3:
                     present, _dbg = self._ensure_blue().detect(head)
+                    self._last_blue_area = _dbg.get("area_frac")
+                    blue_dbg = {"checked": True, "area_frac": self._last_blue_area, "present": bool(present)}
                     self._blue_pos_count = self._blue_pos_count + 1 if present else 0
                     if self._blue_pos_count >= self.cfg.vision_confirm:
                         self._blue_fired = True
-                        return self._level()
+                        return self._record("blue", self._state, self._state, pick_dbg, blue_dbg)
 
         # Reset 4 -> 0 when the arm returns to the init/home pose (episode done).
         if self._state == self.cfg.n_shoes and self._home is not None and self._home.at_home(state):
+            from_state = self._state
             self._reset_cycle()
+            return self._record("reset", from_state, 0, pick_dbg, blue_dbg)
 
-        return self._level()
+        return self._record(None, self._state, self._state, pick_dbg, blue_dbg)
