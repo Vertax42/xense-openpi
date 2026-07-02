@@ -4,6 +4,9 @@
   "vision_stride": 15,
   "vision_confirm": 2,
   "home_tol": 0.05,
+  "use_flip_gate": true,
+  "flip_min_delta": 1.0,
+  "flip_confirm": 8,
   "transitions": [
     { "box": { "x_min": 0.95, "x_max": 1.35, "y_min": -0.45, "y_max": 0.05, "z_min": -0.45, "z_max": -0.10 }, "tcp_idx": [9, 10, 11], "grip_idx": 19 },
     { "box": { "x_min": 0.95, "x_max": 1.35, "y_min": -0.45, "y_max": 0.05, "z_min": -0.45, "z_max": -0.10 }, "tcp_idx": [9, 10, 11], "grip_idx": 19 },

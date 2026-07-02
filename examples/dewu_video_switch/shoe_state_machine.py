@@ -71,6 +71,17 @@ class ShoeSMConfig:
     vision_confirm: int = 2   # consecutive positive blue checks before firing
     home_tol: float = 0.05    # meters; both TCPs within tol of init => home
     home_pose: HomePose | None = None  # None => auto-capture from initial state-0 frames
+    # Insole-flip pose gate. The presenting arm rotates the insole to show its blue
+    # underside to the head cam, then HOLDS it. So blue is only accepted while that
+    # arm's 6D orientation is far (> flip_min_delta) from the pose it had at the pick,
+    # AND has stayed there for flip_confirm frames. This rejects the blue box-wall / mat
+    # false positives (which fire ~1 s after the pick, when the arm is still in its carry
+    # pose, delta ~ 0) and — being proprioceptive — is invariant to scene and lighting.
+    # Measured: carry pose delta ~ 0.0, flip-and-hold delta ~ 1.9-2.8 across both scenes.
+    # Set use_flip_gate false to fall back to vision-only.
+    use_flip_gate: bool = True
+    flip_min_delta: float = 1.0
+    flip_confirm: int = 8     # frames the flipped pose must hold before blue is allowed
 
     @classmethod
     def from_json(cls, path: str) -> "ShoeSMConfig":
@@ -91,6 +102,9 @@ class ShoeSMConfig:
         cfg.vision_stride = int(d.get("vision_stride", cfg.vision_stride))
         cfg.vision_confirm = int(d.get("vision_confirm", cfg.vision_confirm))
         cfg.home_tol = float(d.get("home_tol", cfg.home_tol))
+        cfg.use_flip_gate = bool(d.get("use_flip_gate", cfg.use_flip_gate))
+        cfg.flip_min_delta = float(d.get("flip_min_delta", cfg.flip_min_delta))
+        cfg.flip_confirm = int(d.get("flip_confirm", cfg.flip_confirm))
 
         def _box(b):
             return BoundingBox3D(b["x_min"], b["x_max"], b["y_min"], b["y_max"], b["z_min"], b["z_max"])
@@ -172,6 +186,12 @@ class ShoeStateMachineDetector(Detector):
         self._blue_pos_count = 0
         self._frame_i = 0
         self._last_blue_area: float | None = None
+        # Insole-flip gate state (see ShoeSMConfig): reference orientation captured at
+        # the pick, which arm's 6D orientation to watch, and the hold counter.
+        self._flip_ref: np.ndarray | None = None
+        self._flip_ori_slice: slice | None = None
+        self._flip_count = 0
+        self._last_flip: dict = {"delta": None, "ready": False}
         # Per-frame debug snapshot (filled by detect(); read by replay_debug).
         self.last: dict = {}
 
@@ -195,8 +215,27 @@ class ShoeStateMachineDetector(Detector):
             "blue": blue_dbg,          # {checked, area_frac, present}
             "blue_fired": self._blue_fired,
             "last_blue_area": self._last_blue_area,
+            "flip": dict(self._last_flip),   # {delta, ready} — insole-flip pose gate
         }
         return scene
+
+    def _flip_gate(self, state) -> bool:
+        """Return True once the presenting arm has rotated the insole far from its pick
+        pose and held there for flip_confirm frames. Called every frame while a shoe is
+        active so the hold counter stays continuous. Rejects blue false positives on the
+        boxes/mat, which fire at the carry pose (delta ~ 0)."""
+        if not self.cfg.use_flip_gate:
+            self._last_flip = {"delta": None, "ready": True}
+            return True
+        if self._flip_ref is None or self._flip_ori_slice is None:
+            self._last_flip = {"delta": None, "ready": False}
+            return False
+        ori = np.asarray(state[self._flip_ori_slice], dtype=float)
+        delta = float(np.linalg.norm(ori - self._flip_ref))
+        self._flip_count = self._flip_count + 1 if delta > self.cfg.flip_min_delta else 0
+        ready = self._flip_count >= self.cfg.flip_confirm
+        self._last_flip = {"delta": delta, "ready": ready}
+        return ready
 
     def _ensure_blue(self):
         if self._blue is None:
@@ -216,6 +255,9 @@ class ShoeStateMachineDetector(Detector):
         self._state = 0
         self._blue_fired = False
         self._blue_pos_count = 0
+        self._flip_ref = None
+        self._flip_ori_slice = None
+        self._flip_count = 0
         for p in self._picks:
             p.reset()
 
@@ -252,11 +294,18 @@ class ShoeStateMachineDetector(Detector):
                 self._state += 1
                 self._blue_fired = False
                 self._blue_pos_count = 0
+                # Capture the presenting arm's 6D orientation as the flip reference.
+                # Layout per arm: x,y,z, r1..r6 -> orientation starts 3 past the xyz.
+                tcp0 = int(self.cfg.transitions[from_state].tcp_idx[0])
+                self._flip_ori_slice = slice(tcp0 + 3, tcp0 + 9)
+                self._flip_ref = np.asarray(state[self._flip_ori_slice], dtype=float)
+                self._flip_count = 0
                 return self._record("pick", from_state, self._state, pick_dbg, blue_dbg)
 
-        # Blue event (~vision_stride): only within an active shoe state, once each.
+        # Blue event: the insole-flip pose gate AND the vision check, once each shoe.
         if 1 <= self._state <= self.cfg.n_shoes and not self._blue_fired:
-            if self._frame_i % max(1, self.cfg.vision_stride) == 0:
+            flip_ready = self._flip_gate(state)  # every frame -> keeps the hold counter live
+            if flip_ready and self._frame_i % max(1, self.cfg.vision_stride) == 0:
                 head = (frame.get("images") or {}).get("head")
                 if isinstance(head, np.ndarray) and head.ndim == 3:
                     present, _dbg = self._ensure_blue().detect(head)
