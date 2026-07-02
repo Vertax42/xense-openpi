@@ -100,6 +100,13 @@ def _draw_hud(cv2, bgr, *, frame_i, t, last, committed, banner, blue_area=None, 
     blue_col = (0, 200, 255) if isinstance(area, (int, float)) and area >= 0.05 else _WHITE
     _text(cv2, bgr, f"blue area: {area_s}", (8, 94), color=blue_col)
 
+    flip = last.get("flip") or {}
+    fd = flip.get("delta")
+    fd_s = f"{fd:.2f}" if isinstance(fd, (int, float)) else "--"
+    fready = bool(flip.get("ready"))
+    _text(cv2, bgr, f"flip gate: d={fd_s} {'READY' if fready else 'wait'}",
+          (8, 118), color=(0, 220, 0) if fready else _WHITE)
+
     # --- bottom-left: accumulated event log (most recent last) ---
     if events:
         shown = events[-12:]
