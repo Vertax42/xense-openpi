@@ -182,6 +182,8 @@ tests/fixtures/
 
 # Annotated debug videos from examples/dewu_video_switch/replay_debug.py (regenerable)
 debug_*.mp4
+# Batch validation outputs (annotated videos + terminal logs; large, regenerable)
+debug_runs/
 # Local test scene videos (large; web/videos symlinks point at these)
 white_shoe_*.mp4
 # Editor caches / local IDE config
