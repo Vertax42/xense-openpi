@@ -164,6 +164,19 @@ def main() -> None:
     if img_key not in ds.features:
         raise SystemExit(f"camera key {img_key!r} not in dataset features: {sorted(ds.features)}")
 
+    # Decode ONLY the head stream. ds[f] otherwise decodes every camera video (both
+    # wrists + all tactiles) on every frame — none of which we use — which dominates
+    # the runtime. Patch _query_videos to drop all but the head key before decode.
+    try:
+        _orig_query_videos = ds._query_videos
+
+        def _query_head_only(query_ts, ep_idx, _orig=_orig_query_videos, _keep=img_key):
+            return _orig({k: v for k, v in query_ts.items() if k == _keep}, ep_idx)
+
+        ds._query_videos = _query_head_only
+    except Exception as e:  # noqa: BLE001 — optimization only; fall back to full decode
+        print(f"[warn] could not restrict decode to head ({type(e).__name__}); decoding all cameras")
+
     n = len(ds)
     if args.max_frames:
         n = min(n, args.max_frames)
