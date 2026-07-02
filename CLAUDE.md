@@ -46,10 +46,6 @@ ruff check . --fix
 
 # Run formatter  
 ruff format .
-
-# Pre-commit hooks
-pre-commit install
-pre-commit run --all-files
 ```
 
 ### Testing
