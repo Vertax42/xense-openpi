@@ -152,6 +152,14 @@ def main() -> None:
     print(f"Loading {args.repo_id} episode {args.episode} ...")
     ds = LeRobotDataset(args.repo_id, root=args.root, episodes=[args.episode])
     fps = args.fps or ds.fps
+    # Tolerate minor per-frame timestamp sync drift in the recorded videos: without
+    # this, one frame a fraction of a frame-period off raises FrameTimestampError from
+    # torchcodec and aborts the whole run (lerobot's default tolerance is 1e-4 s).
+    # Allow up to one frame period; genuinely undecodable frames are still skipped below.
+    try:
+        ds.tolerance_s = max(ds.tolerance_s, 1.0 / fps)
+    except Exception:
+        pass
     img_key = f"observation.images.{args.camera}"
     if img_key not in ds.features:
         raise SystemExit(f"camera key {img_key!r} not in dataset features: {sorted(ds.features)}")
@@ -180,9 +188,16 @@ def main() -> None:
     banner = None  # (text, color, frames_left)
     show = args.show  # disabled on the fly if the cv2 build has no GUI (headless wheel)
     event_log: list[str] = []  # accumulated pick/blue/switch/reset lines, drawn on the frame
+    skipped = 0  # frames whose video failed to decode (bad timestamps) — skipped, not fatal
 
     for f in range(n):
-        item = ds[f]
+        try:
+            item = ds[f]
+        except Exception as e:  # noqa: BLE001 — a single bad frame must not abort the run
+            skipped += 1
+            if skipped <= 5:
+                print(f"[warn] frame {f}: video decode failed ({type(e).__name__}); skipping")
+            continue
         t = f / fps
         head = _to_hwc_rgb_uint8(item[img_key])
         state = item["observation.state"].numpy().astype(np.float32) if "observation.state" in item else None
@@ -264,6 +279,8 @@ def main() -> None:
     print("\n--- summary ---")
     print(f"events: pick={n_events['pick']} blue={n_events['blue']} reset={n_events['reset']}")
     print(f"committed switches: {switches}   final scene: {controller.current}")
+    if skipped:
+        print(f"skipped frames (undecodable video): {skipped}/{n}")
     if out_path != "" and writer is not None:
         print(f"annotated video: {out_path}")
 
